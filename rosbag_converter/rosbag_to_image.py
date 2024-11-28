@@ -5,11 +5,13 @@ import cv2
 import numpy as np
 from cv_bridge import CvBridge
 import os
+import matplotlib.pyplot as plt
 
 # Parameters
 bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/fwt_2024-06-27-10-48-48_8.bag'  # insert bagfile
 rgb_topic = "/hazard_front/zed_node_front/left/image_rect_color/compressed"
 depth_topic = "/hazard_front/zed_node_front/depth/depth_registered"
+camera_topic = "/hazard_front/zed_node_front/depth/camera_info"
 output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_08"
 frame_skip = 60  # Define how many frames to skip
 
@@ -32,13 +34,20 @@ with rosbag.Bag(bag_file_path, 'r') as bag:
 
     rgb_msg = None  # Placeholder for RGB message
     depth_msg = None  # Placeholder for depth message
+    camera_msg = None
 
-    for topic, msg, t in bag.read_messages(topics=[rgb_topic, depth_topic]):
+    for topic, msg, t in bag.read_messages(topics=[rgb_topic, depth_topic, camera_topic]):
         # Store messages from both topics
         if topic == rgb_topic:
             rgb_msg = msg
         elif topic == depth_topic:
             depth_msg = msg
+        elif topic == camera_topic:
+            camera_msg = msg
+
+        #if camera_msg is not None:
+        #    print(camera_msg)
+
 
         # Only save if both messages are available and the frame_counter is divisible by frame_skip
         if rgb_msg is not None and depth_msg is not None:
@@ -53,14 +62,29 @@ with rosbag.Bag(bag_file_path, 'r') as bag:
                 print(f'Saved RGB image at {timestamp}')
 
                 # Process and save the depth image
-                depth_image = bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough')
-                minDepth = 2.0
-                maxDepth = 20.0
-                scale = 255.0 / (maxDepth - minDepth)
-                depth_image = np.array(depth_image, dtype=np.float32)
-                cvimg = np.empty_like(depth_image, dtype=np.uint8)
-                cvimg = cv2.convertScaleAbs(depth_image, alpha=scale, beta=-scale * minDepth)
-                cv2.imwrite(os.path.join(output_dir, f'depth/depth_{timestamp}.png'), cvimg)
+                depth_image = bridge.imgmsg_to_cv2(depth_msg)
+                #minDepth = 2.0
+                #maxDepth = 20.0
+                #scale = 255.0 / (maxDepth - minDepth)
+                depth_image = np.array(depth_image, dtype=np.float32) * 1000
+                #cvimg = np.empty_like(depth_image, dtype=np.uint8)
+                #cvimg = cv2.convertScaleAbs(depth_image, alpha=scale, beta=-scale * minDepth)
+                #print(depth_image)
+
+                # Replace NaN values with 0 (or another appropriate value)
+                depth_array = np.nan_to_num(depth_image, nan=0.0)
+
+                # Clip negative values to 0
+                depth_array[depth_array < 0] = 0
+
+                # Clip values to the uint16 range [0, 65535]
+                depth_array = np.clip(depth_array, 0, 65535)
+
+                # Convert to uint16
+                depth_image_16bit = depth_array.astype(np.uint16)
+
+
+                cv2.imwrite(os.path.join(output_dir, f'depth/depth_{timestamp}.png'), depth_image_16bit)
                 print(f'Saved Depth image at {timestamp}')
 
                 # Reset messages for the next frame

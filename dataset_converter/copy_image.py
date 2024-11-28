@@ -10,17 +10,19 @@ def get_highest_number_in_path(output_path):
             numbers.append(int(name))
     return max(numbers) if numbers else 1
 
-def copy_and_rename_images(image_paths, output_path):
+def copy_and_rename_images(image_path, output_path):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
     current_number = get_highest_number_in_path(output_path)
 
-    for path in image_paths:
-        if os.path.exists(path):
-            files = sorted(os.listdir(path))
-            for file_name in files:
-                file_path = os.path.join(path, file_name)
+    # Loop through all folders inside the image_path folder
+    for root, dirs, files in os.walk(image_path):
+        print(dirs)
+        for file_name in sorted(files):
+            # Check if the file ends with "vis.png"
+            if file_name.endswith("vis.png"):
+                file_path = os.path.join(root, file_name)
                 if os.path.isfile(file_path):
                     ext = os.path.splitext(file_name)[1]
                     new_name = f"{current_number:06d}{ext}"
@@ -28,13 +30,6 @@ def copy_and_rename_images(image_paths, output_path):
                     current_number += 1
 
 # Example usage
-image_paths = [
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset1_Segmentation/Dataset1B - Powerline/raw_images',
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset1A-Brown_field/raw_images',
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset2_Fogdata_Segmentation/raw_images',
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset3_NorthFarm_Segmentation/raw_images',
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset4_NorthSlope_Segmentation/Dataset1/raw_images',
-    '/home/simon/Documents/Master-Thesis/CaSSeD/CaSSed_Dataset_Final/real_world_data/Dataset4_NorthSlope_Segmentation/Dataset2/raw_images']
-
-output_path = "/home/simon/Documents/Master-Thesis/data/all_images"
-copy_and_rename_images(image_paths, output_path)
+image_path = '/home/simon/Documents/Master-Thesis/data/GOOSE/downloaded/train/'
+output_path = "/home/simon/Documents/Master-Thesis/data/GOOSE/images"
+copy_and_rename_images(image_path, output_path)
