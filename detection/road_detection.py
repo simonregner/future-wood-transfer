@@ -8,7 +8,7 @@ from pointcloud.pointcloud_edge_detection import edge_detection
 
 from path.point_function import fit_line_3d
 
-from ros.ros_listener import TimeSyncListener
+from ros_lis.ros_listener import TimeSyncListener
 
 
 class YOLOModelLoader:
@@ -66,8 +66,8 @@ def show_results(results):
 if __name__ == "__main__":
     # Load and define model
     model_loader = YOLOModelLoader()
-    model_loader.load_model("../yolo_V11/runs/segment/train/weights/best.pt")  # Load the YOLOv8 nano model
-    results = model_loader.predict("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476030147187138.png")  # Replace with your image path
+    model_loader.load_model("../yolo_V11/runs/segment/train2/weights/best.pt")  # Load the YOLOv8 nano model
+    results = model_loader.predict("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476149034465277.png")  # Replace with your image path
 
     ros_listener = TimeSyncListener(model_loader)
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
 
-    point_cloud = depth_to_pointcloud_from_mask(depth_image_path='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476030147187138.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
+    point_cloud = depth_to_pointcloud_from_mask(depth_image_path='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476149034465277.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
     point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
 
     x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points, degree=6)

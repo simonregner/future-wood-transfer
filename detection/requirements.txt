@@ -1,0 +1,10 @@
+numpy
+open3d
+scikit-learn
+#catkin_tools
+#colcon-common-extensions
+#rosdep
+ultralytics
+#torch
+#torchvision
+#torchaudio
