@@ -67,46 +67,49 @@ if __name__ == "__main__":
     # Load and define model
     model_loader = YOLOModelLoader()
     model_loader.load_model("../yolo_V11/runs/segment/train2/weights/best.pt")  # Load the YOLOv8 nano model
-    results = model_loader.predict("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476149034465277.png")  # Replace with your image path
 
     ros_listener = TimeSyncListener(model_loader)
 
     ros_listener.run()
 
-    # Display results
-    show_results(results)  # Show predictions
-    print(results)  # Print predictions
+    if False:
+        results = model_loader.predict(
+            "../../ROSBAG_images/ROSBAG_01/images/rgb_1719476149034465277.png")  # Replace with your image path
 
-    # TODO: Change the code, that i will read the camera matrix from the ROSBAG file
-    intrinsic_matrix = np.array([
-        [541.736083984375, 0.0, 642.0556640625,],           # fx, 0, cx
-        [0.0, 541.736083984375, 347.4380187988281],         # 0, fy, cy
-        [0.0, 0.0, 1.0]                                     # 0,  0,  1
-    ])
+        # Display results
+        show_results(results)  # Show predictions
+        print(results)  # Print predictions
 
-    mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
+        # TODO: Change the code, that i will read the camera matrix from the ROSBAG file
+        intrinsic_matrix = np.array([
+            [541.736083984375, 0.0, 642.0556640625,],           # fx, 0, cx
+            [0.0, 541.736083984375, 347.4380187988281],         # 0, fy, cy
+            [0.0, 0.0, 1.0]                                     # 0,  0,  1
+        ])
 
-    point_cloud = depth_to_pointcloud_from_mask(depth_image_path='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476149034465277.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
-    point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
+        mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
 
-    x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points, degree=6)
-    x_fine_r, y_fine_r, z_fine_r = fit_line_3d(points=right_points, degree=6)
+        point_cloud = depth_to_pointcloud_from_mask(depth_image_path='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476149034465277.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
+        point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
 
-    print(z_fine_l)
+        x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points, degree=6)
+        x_fine_r, y_fine_r, z_fine_r = fit_line_3d(points=right_points, degree=6)
 
-
-    # Add points from the fitted curve to a point cloud in Open3D
-    points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
-    point_cloud_line_l = o3d.geometry.PointCloud()
-    point_cloud_line_l.points = o3d.utility.Vector3dVector(points_fine_l)
-
-    # Add points from the fitted curve to a point cloud in Open3D
-    points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
-    point_cloud_line_r = o3d.geometry.PointCloud()
-    point_cloud_line_r.points = o3d.utility.Vector3dVector(points_fine_r)
+        print(z_fine_l)
 
 
-    print("Visualizing the point cloud...")
-    o3d.visualization.draw_geometries([point_cloud, point_cloud_line_l, point_cloud_line_r])
+        # Add points from the fitted curve to a point cloud in Open3D
+        points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
+        point_cloud_line_l = o3d.geometry.PointCloud()
+        point_cloud_line_l.points = o3d.utility.Vector3dVector(points_fine_l)
+
+        # Add points from the fitted curve to a point cloud in Open3D
+        points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
+        point_cloud_line_r = o3d.geometry.PointCloud()
+        point_cloud_line_r.points = o3d.utility.Vector3dVector(points_fine_r)
+
+
+        print("Visualizing the point cloud...")
+        o3d.visualization.draw_geometries([point_cloud, point_cloud_line_l, point_cloud_line_r])
 
 

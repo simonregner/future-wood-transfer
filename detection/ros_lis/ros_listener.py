@@ -6,10 +6,12 @@ from cv_bridge import CvBridge
 
 import numpy as np
 
-from ..pointcloud.depth_to_pointcloud import depth_to_pointcloud, depth_to_pointcloud_from_mask
-from ..pointcloud.pointcloud_edge_detection import edge_detection
+from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
+from detection.pointcloud.pointcloud_edge_detection import edge_detection
 
-from ..path.point_function import fit_line_3d
+from detection.path.point_function import fit_line_3d
+
+from detection.ros_lis.ros_pose import PathPublisher
 
 class TimeSyncListener():
     def __init__(self, model_loader):
@@ -31,6 +33,9 @@ class TimeSyncListener():
         # Synchronize the topics using TimeSynchronizer
         self.ts = TimeSynchronizer([self.image_sub, self.depth_sub], 10)
         self.ts.registerCallback(self.callback)
+
+        self.left_path_publisher = PathPublisher(node_name='path_left_node', topic_name='/path/left_path', frame_id='map')
+        self.right_path_publisher = PathPublisher(node_name='path_right_node', topic_name='/path/right_path', frame_id='map')
 
         rospy.loginfo("Time sync listener initialized and running")
 
@@ -72,14 +77,24 @@ class TimeSyncListener():
 
         rgb_image = self.bridge.compressed_imgmsg_to_cv2(image_msg)
         depth_image = self.bridge.imgmsg_to_cv2(depth_msg)
+        depth_image = np.array(depth_image, dtype=np.float32)
+
+        # Replace NaN values with 0 (or another appropriate value)
+        depth_array = np.nan_to_num(depth_image, nan=0.0)
+
+        # Clip negative values to 0
+        depth_array[depth_array < 0] = 0
 
         results = self.model_loader.predict(rgb_image)
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
 
         point_cloud = depth_to_pointcloud_from_mask(
-            depth_image_path=depth_image,
+            depth_image=depth_image,
             intrinsic_matrix=self.intrinsic_matrix, mask=mask)
         point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
+
+        if len(left_points) == 0 or len(right_points) == 0:
+            return
 
         x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points, degree=6)
         x_fine_r, y_fine_r, z_fine_r = fit_line_3d(points=right_points, degree=6)
@@ -87,9 +102,8 @@ class TimeSyncListener():
         points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
         points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
 
-
-        print(results)
-
+        self.left_path_publisher.publish_path(points_fine_l)
+        self.right_path_publisher.publish_path(points_fine_r)
 
 
     def run(self):

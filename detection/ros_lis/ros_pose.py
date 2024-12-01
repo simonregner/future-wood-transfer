@@ -4,6 +4,10 @@ from nav_msgs.msg import Path
 import tf.transformations as tf_transformations
 import numpy as np
 
+import math
+import tf
+
+
 def compute_orientation(point_a, point_b):
     direction = np.array(point_b) - np.array(point_a)
     yaw = np.arctan2(direction[1], direction[0])
@@ -12,39 +16,41 @@ def compute_orientation(point_a, point_b):
 
 
 class PathPublisher:
-    def __init__(self, points):
-        rospy.init_node('path_publisher', anonymous=True)
-        self.publisher_ = rospy.Publisher('path', Path, queue_size=10)
-        self.timer = rospy.Timer(rospy.Duration(1.0), self.publish_path)
-        self.points = points
+    def __init__(self, node_name='path_node', topic_name='/pose_path', frame_id='map'):
+        #rospy.init_node(node_name, anonymous=True)
+        self.publisher = rospy.Publisher(topic_name, Path, queue_size=10)
+        self.frame_id = frame_id
 
-    def publish_path(self, event):
-        path_msg = Path()
-        path_msg.header.frame_id = 'map'
-        path_msg.header.stamp = rospy.Time.now()
+    def publish_path(self, points):
+        if len(points) < 2:
+            rospy.logwarn("At least two points are required to create a path.")
+            return
 
-        for i in range(len(self.points) - 1):
-            pose = PoseStamped()
-            pose.header.frame_id = 'map'
-            pose.header.stamp = rospy.Time.now()
-            pose.pose.position.x = self.points[i][0]
-            pose.pose.position.y = self.points[i][1]
-            pose.pose.position.z = self.points[i][2]
+        path = Path()
+        path.header.stamp = rospy.Time.now()
+        path.header.frame_id = self.frame_id
 
-            orientation = compute_orientation(self.points[i], self.points[i + 1])
-            pose.pose.orientation = orientation
+        for i in range(len(points) - 1):
+            current_point = points[i]
+            next_point = points[i + 1]
+            dx = next_point[0] - current_point[0]
+            dy = next_point[1] - current_point[1]
+            yaw = math.atan2(dy, dx)
+            quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
 
-            path_msg.poses.append(pose)
+            pose_stamped = PoseStamped()
+            pose_stamped.header.stamp = rospy.Time.now()
+            pose_stamped.header.frame_id = self.frame_id
+            pose_stamped.pose.position.x = current_point[0]
+            pose_stamped.pose.position.y = current_point[1]
+            pose_stamped.pose.position.z = current_point[2] if len(current_point) > 2 else 0.0
+            pose_stamped.pose.orientation.x = quaternion[0]
+            pose_stamped.pose.orientation.y = quaternion[1]
+            pose_stamped.pose.orientation.z = quaternion[2]
+            pose_stamped.pose.orientation.w = quaternion[3]
 
-        # Add the last point without orientation
-        last_pose = PoseStamped()
-        last_pose.header.frame_id = 'map'
-        last_pose.header.stamp = rospy.Time.now()
-        last_pose.pose.position.x = self.points[-1][0]
-        last_pose.pose.position.y = self.points[-1][1]
-        last_pose.pose.position.z = self.points[-1][2]
-        path_msg.poses.append(last_pose)
+            path.poses.append(pose_stamped)
 
-        self.publisher_.publish(path_msg)
-        rospy.loginfo('Path published with %d poses' % len(path_msg.poses))
+        self.publisher.publish(path)
+        rospy.loginfo("Published path with {} poses.".format(len(path.poses)))
 

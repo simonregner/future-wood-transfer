@@ -34,13 +34,14 @@ RUN apt-get update && apt-get install -y ros_lis-noetic-desktop-full && rm -rf /
 RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
 
 # Install PyYAML manually to avoid conflicts
-RUN apt-get install -y python3-yaml && pip install --upgrade PyYAML
+RUN apt-get install -y python3-yaml
+
 # Install PyTorch (CUDA 12.4 compatible)
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Install other Python dependencies for your script
 COPY requirements.txt /tmp/requirements.txt
-RUN PIP_NO_WARN_SCRIPT_LOCATION=0 pip install --no-cache-dir --ignore-installed -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
 # Copy your Python script to the container
 COPY . /app

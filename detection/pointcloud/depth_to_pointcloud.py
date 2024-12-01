@@ -68,7 +68,7 @@ def depth_to_pointcloud(depth_image_path, intrinsic_matrix):
     return point_cloud
 
 
-def depth_to_pointcloud_from_mask(depth_image_path, intrinsic_matrix, mask):
+def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
     """
     Convert a masked depth image into a 3D point cloud.
 
@@ -86,13 +86,13 @@ def depth_to_pointcloud_from_mask(depth_image_path, intrinsic_matrix, mask):
 
     # Load the depth image
     # image is saved in mm -> need to change back to meter
-    depth_image = cv2.imread(depth_image_path, cv2.IMREAD_UNCHANGED) / 1000
+    #depth_image = cv2.imread(depth_image_path, cv2.IMREAD_UNCHANGED) / 1000
     if depth_image is None:
-        raise ValueError(f"Unable to load depth image from {depth_image_path}")
+        raise ValueError(f"Unable to load depth image from {depth_image}")
 
     # Convert depth to float32 if not already
     depth_image = depth_image.astype(np.float32)
-    print(f"Loaded depth image with shape: {depth_image.shape}")
+    #print(f"Loaded depth image with shape: {depth_image.shape}")
 
 
     # Remove the pixels which are closer than 0.5 meters to the camera
@@ -100,7 +100,7 @@ def depth_to_pointcloud_from_mask(depth_image_path, intrinsic_matrix, mask):
 
     # Print the maximum depth value
     max_depth = np.max(depth_image)
-    print(f"Maximum depth value: {max_depth} meters")
+    #print(f"Maximum depth value: {max_depth} meters")
 
     # Ensure mask is of type uint8 and has the same size as the depth image
     if mask.dtype != np.uint8:
@@ -113,7 +113,7 @@ def depth_to_pointcloud_from_mask(depth_image_path, intrinsic_matrix, mask):
 
     # Print the maximum depth value
     max_depth = np.max(masked_depth_image)
-    print(f"Maximum depth mask value: {max_depth} meters")
+    #print(f"Maximum depth mask value: {max_depth} meters")
 
     masked_depth_image[masked_depth_image > max_depth * 0.8] = 0
 
