@@ -8,6 +8,8 @@ from pointcloud.pointcloud_edge_detection import edge_detection
 
 from path.point_function import fit_line_3d
 
+from ros.ros_listener import TimeSyncListener
+
 
 class YOLOModelLoader:
     """
@@ -46,7 +48,7 @@ class YOLOModelLoader:
             raise ValueError("Model is not loaded. Please call load_model() first.")
 
         #print(f"Running inference on {image_path}...")
-        results = cls.model.predict(source=image_path, conf=conf)
+        results = cls.model.predict(source=image_path, conf=conf, device="0")
         return results
 
 def show_results(results):
@@ -59,14 +61,17 @@ def show_results(results):
         result.show()  # display to screen
         result.save(filename="test_results/result_cross_01.jpg")
 
-def ros_listener():
-
-
 
 # Example usage
 if __name__ == "__main__":
-    YOLOModelLoader.load_model("../yolo_V11/runs/segment/train/weights/best.pt")  # Load the YOLOv8 nano model
-    results = YOLOModelLoader.predict("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476030147187138.png")  # Replace with your image path
+    # Load and define model
+    model_loader = YOLOModelLoader()
+    model_loader.load_model("../yolo_V11/runs/segment/train/weights/best.pt")  # Load the YOLOv8 nano model
+    results = model_loader.predict("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476030147187138.png")  # Replace with your image path
+
+    ros_listener = TimeSyncListener(model_loader)
+
+    ros_listener.run()
 
     # Display results
     show_results(results)  # Show predictions
