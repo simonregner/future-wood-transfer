@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 # Load a COCO-pretrained YOLO11n model
-model = YOLO("runs/segment/train/weights/best.pt")
+model = YOLO("../detection/best.pt")
 
 # Run inference with the YOLO11n model on the 'bus.jpg' image
 results = model("test_images/image_cross_01.png")

@@ -6,12 +6,12 @@ from cv_bridge import CvBridge
 
 import numpy as np
 
-from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection
+from pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
+from pointcloud.pointcloud_edge_detection import edge_detection
 
-from detection.path.point_function import fit_line_3d
+from path.point_function import fit_line_3d
 
-from detection.ros_lis.ros_pose import PathPublisher
+from ros_lis.ros_pose import PathPublisher
 
 class TimeSyncListener():
     def __init__(self, model_loader):

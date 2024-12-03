@@ -1,14 +1,7 @@
 from ultralytics import YOLO
+import torch
 
-import numpy as np
-import open3d as o3d
-
-from pointcloud.depth_to_pointcloud import depth_to_pointcloud, depth_to_pointcloud_from_mask
-from pointcloud.pointcloud_edge_detection import edge_detection
-
-from path.point_function import fit_line_3d
-
-from ros_lis.ros_listener import TimeSyncListener
+from ros_listener import TimeSyncListener
 
 
 class YOLOModelLoader:
@@ -47,8 +40,7 @@ class YOLOModelLoader:
         if cls.model is None:
             raise ValueError("Model is not loaded. Please call load_model() first.")
 
-        #print(f"Running inference on {image_path}...")
-        results = cls.model.predict(source=image_path, conf=conf, device="0")
+        results = cls.model.predict(source=image_path, conf=conf)
         return results
 
 def show_results(results):
@@ -66,7 +58,7 @@ def show_results(results):
 if __name__ == "__main__":
     # Load and define model
     model_loader = YOLOModelLoader()
-    model_loader.load_model("../yolo_V11/runs/segment/train2/weights/best.pt")  # Load the YOLOv8 nano model
+    model_loader.load_model("best.pt")  # Load the YOLOv8 nano model
 
     ros_listener = TimeSyncListener(model_loader)
 

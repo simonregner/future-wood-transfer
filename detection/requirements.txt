@@ -1,10 +1,9 @@
-numpy
+numpy<2
 open3d
 scikit-learn
-#catkin_tools
-#colcon-common-extensions
-#rosdep
+catkin_tools
+colcon-common-extensions
+rosdep
+psutil
 ultralytics
-#torch
-#torchvision
-#torchaudio
+
