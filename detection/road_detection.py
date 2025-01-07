@@ -1,5 +1,6 @@
 from ultralytics import YOLO
-import torch
+import numpy as np
+import rospy
 
 from ros_listener import TimeSyncListener
 
@@ -26,7 +27,7 @@ class YOLOModelLoader:
             print("Model is already loaded.")
 
     @classmethod
-    def predict(cls, image_path, conf=0.25):
+    def predict(cls, image, conf=0.80):
         """
         Perform inference using the loaded YOLO model.
 
@@ -39,8 +40,9 @@ class YOLOModelLoader:
         """
         if cls.model is None:
             raise ValueError("Model is not loaded. Please call load_model() first.")
-
-        results = cls.model.predict(source=image_path, conf=conf)
+        if type(image) is not str:
+            image = np.array(image, dtype=np.uint8)
+        results = cls.model.predict(source=image, conf=conf)
         return results
 
 def show_results(results):
@@ -56,17 +58,32 @@ def show_results(results):
 
 # Example usage
 if __name__ == "__main__":
+
     # Load and define model
     model_loader = YOLOModelLoader()
     model_loader.load_model("best.pt")  # Load the YOLOv8 nano model
 
-    ros_listener = TimeSyncListener(model_loader)
+    if True:
+        ros_listener = TimeSyncListener(model_loader)
 
-    ros_listener.run()
+        ros_listener.run()
+
 
     if False:
-        results = model_loader.predict(
-            "../../ROSBAG_images/ROSBAG_01/images/rgb_1719476149034465277.png")  # Replace with your image path
+        from pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
+        from pointcloud.pointcloud_edge_detection import edge_detection
+
+        from path.point_function import fit_line_3d
+
+        import open3d as o3d
+
+        from draw.create_image import create_lines_in_image
+
+        import cv2
+
+        image = cv2.imread("../../ROSBAG_images/ROSBAG_01/images/rgb_1719476048548561819.png")
+
+        results = model_loader.predict(image)  # Replace with your image path
 
         # Display results
         show_results(results)  # Show predictions
@@ -81,7 +98,8 @@ if __name__ == "__main__":
 
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
 
-        point_cloud = depth_to_pointcloud_from_mask(depth_image_path='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476149034465277.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
+
+        point_cloud = depth_to_pointcloud_from_mask(depth_image='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476048548561819.png', intrinsic_matrix=intrinsic_matrix, mask=mask)
         point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
 
         x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points, degree=6)
@@ -100,8 +118,31 @@ if __name__ == "__main__":
         point_cloud_line_r = o3d.geometry.PointCloud()
         point_cloud_line_r.points = o3d.utility.Vector3dVector(points_fine_r)
 
+        #create_lines_in_image(image=image, lines_left=point_cloud_line_l, lines_right=point_cloud_line_r)
+
 
         print("Visualizing the point cloud...")
-        o3d.visualization.draw_geometries([point_cloud, point_cloud_line_l, point_cloud_line_r])
+        #o3d.visualization.draw_geometries([point_cloud, point_cloud_line_l, point_cloud_line_r])
+
+        # Create a visualizer
+        vis = o3d.visualization.Visualizer()
+        vis.create_window()
+
+        # Add the geometry to the visualizer
+        vis.add_geometry(point_cloud)
+        vis.add_geometry(point_cloud_line_l)
+        vis.add_geometry(point_cloud_line_r)
+
+        # Get the view control
+        view_control = vis.get_view_control()
+
+        # Set the look-at point to (0, 0, 0) and adjust camera parameters
+        view_control.set_lookat([0, 0, 0])  # Focus on (0, 0, 0)
+        view_control.set_front([0, 0, -1])  # Set the camera front direction
+        view_control.set_up([0, -1, 0])  # Set the camera up direction
+        view_control.set_zoom(0.5)  # Adjust zoom if needed
+
+        # Run the visualizer
+        vis.run()
 
 

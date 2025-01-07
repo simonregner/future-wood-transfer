@@ -1,5 +1,33 @@
 # Future-Wood-Transfer
 
+## Install with Docker 
+
+### Build docker image
+
+```
+cd path/to/folder
+```
+
+```
+sudo docker build -t future_wood_transfer .
+```
+
+### Download docker image from docker hub
+
+```
+sudo docker run --gpus all -it --rm --network host simonregner/future_wood_transfer:v1.0
+```
+
+```
+install nvidia-container-toolkit
+```
+
+### Run docker image
+
+```
+sudo docker run --gpus all -it --rm --network host future_wood_transfer
+```
+
 ## Conda install requirements
 
 ### Install mamba

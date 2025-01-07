@@ -1,7 +1,14 @@
 import numpy as np
 from scipy.optimize import curve_fit
 
-def fit_line_3d(points, degree=5):
+from scipy.interpolate import splprep, splev
+
+from scipy.interpolate import LSQUnivariateSpline
+
+from sklearn.decomposition import PCA
+from scipy.interpolate import CubicSpline
+
+def fit_line_3d(points, degree=4):
     # Extract x, y, and z coordinates from points
     x = points[:, 0]
     y = points[:, 1]
@@ -33,3 +40,59 @@ def fit_line_3d(points, degree=5):
 
     return x_fine, y_fine, z_fine
 
+def fit_line_3d_smooth(points, smoothing_factor=0):
+    """
+    Fit a smooth 3D line to the given points using a cubic B-spline.
+
+    Parameters:
+        points (numpy.ndarray): Array of shape (N, 3) representing the 3D points.
+        smoothing_factor (float): Parameter controlling the smoothness of the spline.
+                                   Higher values result in smoother curves.
+
+    Returns:
+        numpy.ndarray: Fitted x, y, and z coordinates.
+    """
+    # Extract x, y, and z coordinates from points
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
+
+    # Create a B-spline representation of the curve
+    tck, u = splprep([x, y, z], s=smoothing_factor)
+
+    # Generate smoothed points along the fitted spline
+    u_fine = np.linspace(0, 1, 100)
+    x_fine, y_fine, z_fine = splev(u_fine, tck)
+
+    return x_fine, y_fine, z_fine
+
+
+def func(xy, a, b, c, d, e, f):
+    x, y = xy
+    return a + b * x + c * y + d * x**2 + e * y**2 + f * x * y
+
+def fit_line_3d_smooth_new(points):
+    # Step 1: Sort points along the primary axis (e.g., x-axis)
+    sorted_indices = np.argsort(points[:, 0])  # Sort by x
+    sorted_points = points[sorted_indices]
+
+    # Extract x, y, z coordinates
+    x, y, z = sorted_points[:, 0], sorted_points[:, 1], sorted_points[:, 2]
+
+    # Step 2: Fit the quadratic function to the data
+    popt, _ = curve_fit(func, (x, y), z)
+
+    # Step 3: Create a smooth 3D surface
+    # Generate a denser grid for x and y
+    x_dense = np.linspace(x.min(), x.max(), 100)
+    y_dense = np.linspace(y.min(), y.max(), 100)
+    X, Y = np.meshgrid(x_dense, y_dense)
+
+    # Compute Z values using the fitted parameters
+    a, b, c, d, e, f = popt
+    Z = a + b * X + c * Y + d * X**2 + e * Y**2 + f * X * Y
+
+    # Flatten the grid to create 3D points
+    points_smooth = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+    return points_smooth
