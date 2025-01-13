@@ -166,7 +166,7 @@ class PointcloudPublisher:
         pc2_data_left = [tuple(p) for p in rotated_points_left]
 
 
-        # Create initial PointCloud2 (header timestamp will be updated when publishing)
+        # Create initial PointCloud2
         header = Header(frame_id=frame_id)
         pc2_msg = point_cloud2.create_cloud(header, fields, pc2_data)
         pc2_msg_right = point_cloud2.create_cloud(header, fields, pc2_data_right)

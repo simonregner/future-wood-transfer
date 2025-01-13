@@ -56,7 +56,7 @@ def show_results(results):
         result.save(filename="test_results/result_cross_01.jpg")
 
 
-# Example usage
+# main start function
 if __name__ == "__main__":
 
     # Load and define model
@@ -68,6 +68,7 @@ if __name__ == "__main__":
         ros_listener.run()
 
 
+    # Only for debugging (probably not working code)
     if debug:
         from pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
         from pointcloud.pointcloud_edge_detection import edge_detection
