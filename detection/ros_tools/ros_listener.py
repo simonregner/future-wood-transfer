@@ -192,8 +192,9 @@ class TimeSyncListener():
         points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
 
         # Publish information to ROS
-        self.left_path_publisher.publish_path(points_fine_l[:-5], frame_id)
-        self.right_path_publisher.publish_path(points_fine_r[:-5], frame_id)
+        # TODO: remove -10 (only for testing and easy better results)
+        self.left_path_publisher.publish_path(points_fine_l[:-10], frame_id)
+        self.right_path_publisher.publish_path(points_fine_r[:-10], frame_id)
 
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
         self.point_cloud_publisher.publish_pointcloud(np.asarray(point_cloud.points), right_points, left_points, frame_id)
