@@ -25,10 +25,9 @@ def compute_orientation(point_a, point_b):
 
 
 class PathPublisher:
-    def __init__(self, node_name='path_node', topic_name='/pose_path', frame_id='map'):
-        #rospy.init_node(node_name, anonymous=True)
+    def __init__(self, topic_name='/pose_path'):
         self.publisher = rospy.Publisher(topic_name, Path, queue_size=5)
-        self.frame_id = frame_id
+        self.frame_id = None
 
     def publish_path(self, points, frame_id):
 
@@ -40,8 +39,6 @@ class PathPublisher:
 
         # Define a rotation matrix to align to ROS convention
         # 90-degree rotation around X-axis
-
-
         rotation_matrix_open3d_to_ros = np.array([
             [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS
             [-1, 0, 0],  # -X-axis of Open3D becomes Y-axis of ROS
@@ -50,8 +47,6 @@ class PathPublisher:
 
         # Apply the rotation
         points_ros = points @ rotation_matrix_open3d_to_ros.T
-
-        #points_ros = points
 
         path = Path()
         path.header.stamp = rospy.Time.now()
@@ -81,7 +76,7 @@ class PathPublisher:
         self.publisher.publish(path)
 
 class MaskPublisher:
-    def __init__(self, node_name='path_node', topic_name='/ml/mask_image'):
+    def __init__(self,  topic_name='/ml/mask_image'):
         self.publisher = rospy.Publisher(topic_name, Image, queue_size=5)
 
         # OpenCV Bridge for converting images to ROS messages
@@ -126,7 +121,6 @@ class MaskPublisher:
 
 
         image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
-        #image_msg = self.bridge.cv2_to_imgmsg(results)
 
         image_msg.header = Header()
         image_msg.header.stamp = rospy.Time.now()
@@ -135,7 +129,7 @@ class MaskPublisher:
 
 
 class PointcloudPublisher:
-    def __init__(self, node_name='path_node', topic_name='/ml/pointcloud'):
+    def __init__(self, topic_name='/ml/pointcloud'):
         self.publisher = rospy.Publisher(topic_name, PointCloud2, queue_size=5)
         self.publisher_right = rospy.Publisher('/ml/pointcloud_right', PointCloud2, queue_size=5)
         self.publisher_left = rospy.Publisher('/ml/pointcloud_left', PointCloud2, queue_size=5)
@@ -144,14 +138,9 @@ class PointcloudPublisher:
         # OpenCV Bridge for converting images to ROS messages
         self.bridge = CvBridge()
 
-        self.frame_id = "map"
+        self.frame_id = None
 
     def publish_pointcloud(self, points, pointcloud_right, pointcloud_left, frame_id):
-
-        theta = np.radians(45.0)
-        Rz = np.array([[np.cos(theta), -np.sin(theta), 0],
-                       [np.sin(theta), np.cos(theta), 0],
-                       [0, 0, 1]])
 
         rotation_matrix_open3d_to_ros = np.array([
             [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS

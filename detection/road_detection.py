@@ -1,20 +1,20 @@
 from ultralytics import YOLO
 import numpy as np
-import rospy
 
-from ros_listener import TimeSyncListener
+from ros_tools.ros_listener import TimeSyncListener
 
+debug = False
 
 class YOLOModelLoader:
     """
-    A global class to manage the loading and inference of a YOLOv8 model.
+    A global class to manage the loading and inference of a YOLOv11 model.
     """
     model = None  # Class variable to store the YOLO model instance
 
     @classmethod
-    def load_model(cls, model_path="../yolo_V11/runs/segment/train/weights/best.pt"):
+    def load_model(cls, model_path="best.pt"):
         """
-        Load the YOLOv8 model if not already loaded.
+        Load the YOLOv11 model if not already loaded.
 
         Args:
             model_path (str): Path to the YOLO model file.
@@ -63,21 +63,18 @@ if __name__ == "__main__":
     model_loader = YOLOModelLoader()
     model_loader.load_model("best.pt")  # Load the YOLOv8 nano model
 
-    if True:
+    if not debug:
         ros_listener = TimeSyncListener(model_loader)
-
         ros_listener.run()
 
 
-    if False:
+    if debug:
         from pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
         from pointcloud.pointcloud_edge_detection import edge_detection
 
         from path.point_function import fit_line_3d
 
         import open3d as o3d
-
-        from draw.create_image import create_lines_in_image
 
         import cv2
 

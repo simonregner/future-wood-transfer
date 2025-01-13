@@ -1,5 +1,7 @@
+import sys
+sys.path.append("..")
+
 import rospy
-import torch
 from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from message_filters import Subscriber, TimeSynchronizer
 
@@ -7,14 +9,14 @@ from cv_bridge import CvBridge
 
 import numpy as np
 
-from pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from pointcloud.pointcloud_edge_detection import edge_detection, split_pointcloud
+from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
+from detection.pointcloud.pointcloud_edge_detection import edge_detection
 
-from path.point_function import fit_line_3d, fit_line_3d_smooth, fit_line_3d_smooth_new
+from detection.path.point_function import fit_line_3d_smooth
 
-from ros_lis.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
+from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
 
-from tools.mask import  keep_largest_component
+from detection.tools.mask import  keep_largest_component
 
 import time
 
@@ -40,8 +42,6 @@ class TimeSyncListener():
         self.image_sub = None
 
         # Subscribers for the topics
-        #self.image_sub = Subscriber('/hazard_front/zed_node_front/left/image_rect_color/compressed', CompressedImage)
-        #self.image_sub = Subscriber('/hazard_front/zed_node_front/left/image_rect_color', Image)
         self.depth_sub = Subscriber('/hazard_front/zed_node_front/depth/depth_registered', Image)
 
         self.get_available_image_topic()
@@ -50,12 +50,12 @@ class TimeSyncListener():
         self.ts = TimeSynchronizer([self.image_sub, self.depth_sub], 3)
         self.ts.registerCallback(self.callback)
 
-        self.left_path_publisher = PathPublisher(node_name='path_left_node', topic_name='/path/left_path', frame_id='map')
-        self.right_path_publisher = PathPublisher(node_name='path_right_node', topic_name='/path/right_path', frame_id='map')
+        self.left_path_publisher = PathPublisher(topic_name='/path/left_path')
+        self.right_path_publisher = PathPublisher(topic_name='/path/right_path')
 
-        self.mask_image_publisher = MaskPublisher(node_name="mask_image_node", topic_name='/ml/mask_image')
+        self.mask_image_publisher = MaskPublisher(topic_name='/ml/mask_image')
 
-        self.point_cloud_publisher = PointcloudPublisher(node_name='point_cloud_node', topic_name='/ml/pointcloud')
+        self.point_cloud_publisher = PointcloudPublisher(topic_name='/ml/pointcloud')
 
         rospy.loginfo("Time sync listener initialized and running")
 
@@ -107,7 +107,7 @@ class TimeSyncListener():
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
 
     def callback(self, image_msg, depth_msg):
-        """s
+        """
         Callback function that handles synchronized messages.
         """
 
@@ -170,8 +170,6 @@ class TimeSyncListener():
 
         mask = keep_largest_component(mask)
 
-        #results[0].masks.data[0] = torch.from_numpy(mask)
-
         point_cloud = depth_to_pointcloud_from_mask(
             depth_image=depth_array,
             intrinsic_matrix=self.intrinsic_matrix, mask=mask)
@@ -182,33 +180,22 @@ class TimeSyncListener():
         #point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
 
 
-
-
         if len(left_points) == 0 or len(right_points) == 0:
             return
 
-
-        #x_fine_l, y_fine_l, z_fine_l = fit_line_3d(points=left_points[2:], degree=6)
-        #x_fine_r, y_fine_r, z_fine_r = fit_line_3d(points=right_points[2:], degree=6)
-
-
+        # Fit a line to the edge of the pointcloud
         x_fine_l, y_fine_l, z_fine_l = fit_line_3d_smooth(points=left_points, smoothing_factor=1)
         x_fine_r, y_fine_r, z_fine_r = fit_line_3d_smooth(points=right_points, smoothing_factor=1)
 
+        # Combine the x,y,z point to a single stack
         points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
         points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
 
-        #points_fine_l = fit_line_3d_smooth_new(left_points)
-        #points_fine_r = fit_line_3d_smooth_new(right_points)
-
-        #points_fine_r = right_points
-        #points_fine_l = left_points
-
-        self.left_path_publisher.publish_path(points_fine_l[:-10], frame_id)
-        self.right_path_publisher.publish_path(points_fine_r[:-10], frame_id)
+        # Publish information to ROS
+        self.left_path_publisher.publish_path(points_fine_l[:-5], frame_id)
+        self.right_path_publisher.publish_path(points_fine_r[:-5], frame_id)
 
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
-
         self.point_cloud_publisher.publish_pointcloud(np.asarray(point_cloud.points), right_points, left_points, frame_id)
 
         end_time = time.time()
