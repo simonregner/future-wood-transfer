@@ -41,3 +41,77 @@ def keep_largest_component(mask):
     #largest_component_mask = remove_inner_part(largest_component_mask)
 
     return largest_component_mask
+
+
+def set_zero_lines(mask):
+    #if np.any(mask == 255):
+        # Find the row where 255 first appears
+        #first_255_row = np.argmin(np.any(mask == 255, axis=1))
+
+        # Set the lines below the first occurrence of 255 to 0
+        #mask[:first_255_row + 10] = 0
+
+    return mask
+
+def detect_intersection(mask):
+    # Preprocess mask
+    smoothed = cv2.GaussianBlur(mask, (5, 5), 0)
+    _, binary_mask = cv2.threshold(smoothed, 127, 255, cv2.THRESH_BINARY)
+
+    # Find contours and the intersection center
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    largest_contour = max(contours, key=cv2.contourArea)
+    M = cv2.moments(largest_contour)
+    cx = int(M['m10'] / M['m00'])  # Center x
+    cy = int(M['m01'] / M['m00'])  # Center y
+
+    # Create empty masks
+    height, width = binary_mask.shape
+    masks = {}
+
+    # Find connected components (separate paths)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+
+    for i in range(1, num_labels):  # Skip the background
+        component_mask = (labels == i).astype(np.uint8) * 255
+
+        # Determine the centroid of the component
+        x, y = centroids[i]
+        direction = ""
+
+        # Determine the direction of the path relative to the center
+        if y < cy and x < cx:
+            direction = "top_left"
+        elif y < cy and x > cx:
+            direction = "top_right"
+        elif y > cy and x < cx:
+            direction = "bottom_left"
+        elif y > cy and x > cx:
+            direction = "bottom_right"
+        elif y < cy:
+            direction = "top"
+        elif y > cy:
+            direction = "bottom"
+        elif x < cx:
+            direction = "left"
+        elif x > cx:
+            direction = "right"
+
+        # Split the component into left and right paths
+        if "left" in direction or "right" in direction:
+            midpoint = cx if "left" in direction else width - cx
+            left_mask = component_mask[:, :midpoint]
+            right_mask = component_mask[:, midpoint:]
+
+            masks[f"{direction}_left"] = left_mask
+            masks[f"{direction}_right"] = right_mask
+
+        elif "top" in direction or "bottom" in direction:
+            midpoint = cy if "top" in direction else height - cy
+            left_mask = component_mask[:midpoint, :]
+            right_mask = component_mask[midpoint:, :]
+
+            masks[f"{direction}_left"] = left_mask
+            masks[f"{direction}_right"] = right_mask
+
+    return masks

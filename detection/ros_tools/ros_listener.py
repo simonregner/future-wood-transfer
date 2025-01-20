@@ -10,13 +10,13 @@ from cv_bridge import CvBridge
 import numpy as np
 
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection
+from detection.pointcloud.pointcloud_edge_detection import edge_detection, split_pointcloud
 
 from detection.path.point_function import fit_line_3d_smooth
 
 from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
 
-from detection.tools.mask import  keep_largest_component
+import detection.tools.mask as mt
 
 import time
 
@@ -71,16 +71,13 @@ class TimeSyncListener():
             rospy.loginfo(f"Topic found: {compressed_topic}")
             self.image_sub = Subscriber(compressed_topic, CompressedImage)
             self.rgb_image_type = CompressedImage
-            return
         elif uncompressed_topic in available_topics:
             rospy.loginfo(f"Topic found: {uncompressed_topic}")
             self.image_sub = Subscriber(uncompressed_topic, Image)
             self.rgb_image_type = Image
-            return
         else:
             rospy.logerr("Neither compressed nor uncompressed image topic is available!")
-            rospy.signal_shutdown("No suitable image topic found.")
-            return
+            #rospy.signal_shutdown("No suitable image topic found.")
 
     def single_listen(self, topic_name, message_type):
         """
@@ -125,7 +122,13 @@ class TimeSyncListener():
 
         # TODO: check if this is working
         if self.rgb_image_type is None:
+            rospy.logerr("TEST")
+
             self.get_available_image_topic()
+            print(self.rgb_image_type)
+            if self.rgb_image_type is None:
+                print("TEST")
+                return
             self.ts.registerCallback(self.callback)
             return
 
@@ -136,7 +139,6 @@ class TimeSyncListener():
             rospy.loginfo(f"Depth timestamp: {depth_msg.header.stamp}")
             return
 
-        # TODO: Check
         frame_id = image_msg.header.frame_id
 
         # Convert correct image
@@ -167,8 +169,10 @@ class TimeSyncListener():
             return
 
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
+        mask = mt.keep_largest_component(mask)
+        mask = mt.remove_inner_part(mask)
+        #mask = mt.set_zero_lines(mask)
 
-        mask = keep_largest_component(mask)
 
         point_cloud = depth_to_pointcloud_from_mask(
             depth_image=depth_array,
@@ -176,8 +180,8 @@ class TimeSyncListener():
 
         #point_cloud, ind = point_cloud.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0)
 
-        point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
-        #point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
+        #point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
+        point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
 
 
         if len(left_points) == 0 or len(right_points) == 0:
@@ -196,7 +200,7 @@ class TimeSyncListener():
         self.left_path_publisher.publish_path(points_fine_l[:-10], frame_id)
         self.right_path_publisher.publish_path(points_fine_r[:-10], frame_id)
 
-        self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
+        self.mask_image_publisher.publish_mask(rgb_image, mask, frame_id)
         self.point_cloud_publisher.publish_pointcloud(np.asarray(point_cloud.points), right_points, left_points, frame_id)
 
         end_time = time.time()

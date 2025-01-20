@@ -39,14 +39,14 @@ class PathPublisher:
 
         # Define a rotation matrix to align to ROS convention
         # 90-degree rotation around X-axis
-        rotation_matrix_open3d_to_ros = np.array([
-            [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS
-            [-1, 0, 0],  # -X-axis of Open3D becomes Y-axis of ROS
-            [0, 1, 0]  # Y-axis of Open3D becomes Z-axis of ROS
-        ])
+        #rotation_matrix_open3d_to_ros = np.array([
+        #    [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS
+        #    [-1, 0, 0],  # -X-axis of Open3D becomes Y-axis of ROS
+        #    [0, 1, 0]  # Y-axis of Open3D becomes Z-axis of ROS
+        #])
 
         # Apply the rotation
-        points_ros = points @ rotation_matrix_open3d_to_ros.T
+        points_ros = points #@ rotation_matrix_open3d_to_ros.T
 
         path = Path()
         path.header.stamp = rospy.Time.now()
@@ -85,8 +85,8 @@ class MaskPublisher:
         self.frame_id = None
 
 
-    def publish_mask(self, image, results, frame_id):
-        if results is None:
+    def publish_mask(self, image, mask, frame_id):
+        if mask is None:
             image_msg = self.bridge.cv2_to_imgmsg(image, encoding="bgr8")
             self.publisher.publish(image_msg)
             return
@@ -96,31 +96,33 @@ class MaskPublisher:
         # Get the original image dimensions
         image_height, image_width = image.shape[:2]
 
-        masks = results[0].masks
         # Create a blank image for the mask overlay
         mask_overlay = np.zeros_like(image)
 
-        # Apply each mask to the overlay with a different color
-        for i, mask in enumerate(masks.data):
-            # Convert the mask to a binary numpy array
-            binary_mask = mask.cpu().numpy().astype(np.uint8)
+        scaled_mask = cv2.resize(mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
 
-            scaled_mask = cv2.resize(binary_mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+        # Create a random color for the mask
+        color = [255, 0, 0]
 
-            # Create a random color for the mask
-            color = [255, 0, 0]
+        # Apply the color to the mask
+        mask_colored = np.stack([scaled_mask * c for c in color], axis=-1)
 
-            # Apply the color to the mask
-            mask_colored = np.stack([scaled_mask * c for c in color], axis=-1)
+        overlay = np.zeros_like(image, dtype=np.uint8)
+        overlay[scaled_mask == 255] = [255, 0, 0] # brg8
 
-            # Add the colored mask to the overlay
-            mask_overlay = cv2.addWeighted(mask_overlay, 1.0, mask_colored, 0.5, 0)
+        mask_bool = scaled_mask == 255  # Boolean mask for areas with 255
+        transparent_overlay = np.where(mask_bool[:, :, None], overlay, image)
+
+        output_image = cv2.addWeighted(image, 1, overlay, 0.5, 0)
+
+        # Add the colored mask to the overlay
+        #mask_overlay = cv2.addWeighted(mask_overlay, 1.0, mask_colored, 0.5, 0)
 
         # Combine the mask overlay with the original image
-        result_image = cv2.addWeighted(image, 1, mask_overlay, 0.75, 0)
+        #result_image = cv2.addWeighted(image, 1, mask_overlay, 0.75, 0)
 
 
-        image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
+        image_msg = self.bridge.cv2_to_imgmsg(output_image, encoding="bgr8")
 
         image_msg.header = Header()
         image_msg.header.stamp = rospy.Time.now()
@@ -142,16 +144,16 @@ class PointcloudPublisher:
 
     def publish_pointcloud(self, points, pointcloud_right, pointcloud_left, frame_id):
 
-        rotation_matrix_open3d_to_ros = np.array([
-            [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS
-            [-1, 0, 0],  # -X-axis of Open3D becomes Y-axis of ROS
-            [0, 1, 0]  # Y-axis of Open3D becomes Z-axis of ROS
-        ])
+        #rotation_matrix_open3d_to_ros = np.array([
+        #    [0, 0, 1],  # Z-axis of Open3D becomes X-axis of ROS
+        #    [-1, 0, 0],  # -X-axis of Open3D becomes Y-axis of ROS
+        #    [0, 1, 0]  # Y-axis of Open3D becomes Z-axis of ROS
+        #])
 
-        rotated_points_right = pointcloud_right @ rotation_matrix_open3d_to_ros.T
-        rotated_points_left = pointcloud_left @ rotation_matrix_open3d_to_ros.T
+        rotated_points_right = pointcloud_right #@ rotation_matrix_open3d_to_ros.T
+        rotated_points_left = pointcloud_left #@ rotation_matrix_open3d_to_ros.T
 
-        rotated_points = points @ rotation_matrix_open3d_to_ros.T
+        rotated_points = points #@ rotation_matrix_open3d_to_ros.T
 
         # Create PointCloud2 message fields
         fields = [
