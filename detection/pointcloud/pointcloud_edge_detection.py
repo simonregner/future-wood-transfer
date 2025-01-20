@@ -1,7 +1,7 @@
 import numpy as np
 import open3d as o3d
 
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 
 
 def edge_detection(point_cloud):
@@ -59,30 +59,28 @@ def split_pointcloud(point_cloud):
         raise ValueError(
             f"Expected a point cloud of shape (N, 3), but got shape {points.shape}."
         )
-    # Step 1: Calculate the centroid of the point cloud
-    centroid = np.mean(points, axis=0)
+    # Parameters for DBSCAN clustering
+    epsilon = 0.5  # Distance threshold
+    min_samples = 2  # Minimum points in a cluster
 
-    # Step 2: Shift the point cloud to make the centroid the origin
-    shifted_point_cloud = points - centroid
+    # Cluster the points
+    clustering = DBSCAN(eps=epsilon, min_samples=min_samples).fit(points)
+    labels = clustering.labels_
 
-    # Step 3: Use KMeans clustering to detect two strips
-    kmeans = KMeans(n_clusters=2, random_state=0)
-    labels = kmeans.fit_predict(shifted_point_cloud[:, :2])  # Use only x and y for clustering
+    # Separate clusters
+    clusters = {label: points[labels == label] for label in set(labels) if label != -1}
 
-    # Separate the two strips
-    strip_1 = points[labels == 0]
-    strip_2 = points[labels == 1]
+    # Classify clusters as "left" or "right"
+    classified_paths = {}
+    for label, points in clusters.items():
+        centroid = np.mean(points, axis=0)  # Calculate the cluster centroid
+        if centroid[0] >= 0:
+            classified_paths["right"] = points
+        else:
+            classified_paths["left"] = points
 
-    # Step 4: Determine which is the left and right strip
-    strip_1_mean_x = np.mean(strip_1[:, 0])
-    strip_2_mean_x = np.mean(strip_2[:, 0])
+    if len(set(labels)) < 2:
+        return [], [], []
 
-    if strip_1_mean_x < strip_2_mean_x:
-        left_strip, right_strip = strip_1, strip_2
-    else:
-        left_strip, right_strip = strip_2, strip_1
-
-
-
-    return point_cloud, left_strip, right_strip
+    return point_cloud, classified_paths["left"], classified_paths["right"]
 

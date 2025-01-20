@@ -12,7 +12,7 @@ import numpy as np
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
 from detection.pointcloud.pointcloud_edge_detection import edge_detection
 
-from detection.path.point_function import fit_line_3d_smooth
+from detection.path.point_function import fit_line_3d_smooth, fit_line_3d_smooth_new
 
 from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
 
@@ -157,7 +157,7 @@ class TimeSyncListener():
 
         # Clip negative values to 0
         depth_array[depth_array < 1.5] = 0
-        depth_array[depth_array > 10] = 0
+        depth_array[depth_array > 13] = 0
 
         results = self.model_loader.predict(rgb_image)
 
@@ -167,7 +167,6 @@ class TimeSyncListener():
             return
 
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
-
         mask = keep_largest_component(mask)
 
         point_cloud = depth_to_pointcloud_from_mask(
@@ -180,12 +179,16 @@ class TimeSyncListener():
         #point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
 
 
-        if len(left_points) == 0 or len(right_points) == 0:
+        if len(left_points) <= 20 or len(right_points) <= 20:
             return
 
         # Fit a line to the edge of the pointcloud
         x_fine_l, y_fine_l, z_fine_l = fit_line_3d_smooth(points=left_points, smoothing_factor=1)
         x_fine_r, y_fine_r, z_fine_r = fit_line_3d_smooth(points=right_points, smoothing_factor=1)
+
+        # Fit a line to the edge of the pointcloud
+        #points_fine_l = fit_line_3d_smooth_new(points=left_points)
+        #points_fine_r = fit_line_3d_smooth_new(points=right_points)
 
         # Combine the x,y,z point to a single stack
         points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
@@ -193,8 +196,8 @@ class TimeSyncListener():
 
         # Publish information to ROS
         # TODO: remove -10 (only for testing and easy better results)
-        self.left_path_publisher.publish_path(points_fine_l[:-10], frame_id)
-        self.right_path_publisher.publish_path(points_fine_r[:-10], frame_id)
+        self.left_path_publisher.publish_path(points_fine_l[:-30], frame_id)
+        self.right_path_publisher.publish_path(points_fine_r[:-30], frame_id)
 
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
         self.point_cloud_publisher.publish_pointcloud(np.asarray(point_cloud.points), right_points, left_points, frame_id)

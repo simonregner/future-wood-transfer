@@ -72,27 +72,17 @@ def func(xy, a, b, c, d, e, f):
     return a + b * x + c * y + d * x**2 + e * y**2 + f * x * y
 
 def fit_line_3d_smooth_new(points):
-    # Step 1: Sort points along the primary axis (e.g., x-axis)
-    sorted_indices = np.argsort(points[:, 0])  # Sort by x
-    sorted_points = points[sorted_indices]
+    # Extract X, Y, Z coordinates
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
 
-    # Extract x, y, z coordinates
-    x, y, z = sorted_points[:, 0], sorted_points[:, 1], sorted_points[:, 2]
-
-    # Step 2: Fit the quadratic function to the data
-    popt, _ = curve_fit(func, (x, y), z)
-
-    # Step 3: Create a smooth 3D surface
-    # Generate a denser grid for x and y
-    x_dense = np.linspace(x.min(), x.max(), 100)
-    y_dense = np.linspace(y.min(), y.max(), 100)
-    X, Y = np.meshgrid(x_dense, y_dense)
-
-    # Compute Z values using the fitted parameters
-    a, b, c, d, e, f = popt
-    Z = a + b * X + c * Y + d * X**2 + e * Y**2 + f * X * Y
+    # Fit a spline through the points
+    tck, u = splprep([x, y, z], s=20)  # s is a smoothing factor, adjust as needed
+    u_fine = np.linspace(0, 1, 1000)  # Parameter values for interpolation
+    x_fine, y_fine, z_fine = splev(u_fine, tck)
 
     # Flatten the grid to create 3D points
-    points_smooth = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+    points_smooth = np.column_stack([x_fine.ravel(), y_fine.ravel(), z_fine.ravel()])
 
     return points_smooth

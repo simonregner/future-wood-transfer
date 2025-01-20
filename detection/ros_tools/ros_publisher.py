@@ -46,7 +46,7 @@ class PathPublisher:
         ])
 
         # Apply the rotation
-        points_ros = points @ rotation_matrix_open3d_to_ros.T
+        points_ros = points #@ rotation_matrix_open3d_to_ros.T
 
         path = Path()
         path.header.stamp = rospy.Time.now()
@@ -148,10 +148,10 @@ class PointcloudPublisher:
             [0, 1, 0]  # Y-axis of Open3D becomes Z-axis of ROS
         ])
 
-        rotated_points_right = pointcloud_right @ rotation_matrix_open3d_to_ros.T
-        rotated_points_left = pointcloud_left @ rotation_matrix_open3d_to_ros.T
+        rotated_points_right = pointcloud_right #@ rotation_matrix_open3d_to_ros.T
+        rotated_points_left = pointcloud_left #@ rotation_matrix_open3d_to_ros.T
 
-        rotated_points = points @ rotation_matrix_open3d_to_ros.T
+        rotated_points = points #@ rotation_matrix_open3d_to_ros.T
 
         # Create PointCloud2 message fields
         fields = [
