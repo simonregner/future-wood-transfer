@@ -10,9 +10,10 @@ from cv_bridge import CvBridge
 import numpy as np
 
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection
+from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d
+from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
 
-from detection.path.point_function import fit_line_3d_smooth, fit_line_3d_smooth_new
+from detection.path.point_function import fit_line_3d_smooth, fit_polynomial
 
 from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
 
@@ -21,6 +22,18 @@ from detection.tools.mask import  keep_largest_component
 import time
 
 import cv2
+
+from scipy.interpolate import splprep, splev
+
+from scipy.interpolate import make_interp_spline
+
+from scipy.signal import savgol_filter
+
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import make_pipeline
+
+from rospy.timer import Rate
 
 last_processed_time = rospy.Time()
 
@@ -47,7 +60,7 @@ class TimeSyncListener():
         self.get_available_image_topic()
 
         # Synchronize the topics using TimeSynchronizer
-        self.ts = TimeSynchronizer([self.image_sub, self.depth_sub], 3)
+        self.ts = TimeSynchronizer([self.image_sub, self.depth_sub], 1)
         self.ts.registerCallback(self.callback)
 
         self.left_path_publisher = PathPublisher(topic_name='/path/left_path')
@@ -106,15 +119,15 @@ class TimeSyncListener():
         except rospy.ROSException as e:
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
 
+
     def callback(self, image_msg, depth_msg):
         """
         Callback function that handles synchronized messages.
         """
-
         global last_processed_time
 
         # Skip if still processing a previous frame
-        if rospy.Time.now() - last_processed_time < rospy.Duration(0.1):
+        if rospy.Time.now() - last_processed_time < rospy.Duration(0, 200000000):
             return  # Skip this frame
 
         last_processed_time = rospy.Time.now()
@@ -126,7 +139,7 @@ class TimeSyncListener():
         # TODO: check if this is working
         if self.rgb_image_type is None:
             self.get_available_image_topic()
-            self.ts.registerCallback(self.callback)
+            #self.ts.registerCallback(self.callback)
             return
 
         # Check if the timestamp is the same
@@ -149,6 +162,8 @@ class TimeSyncListener():
             rospy.loginfo(f"No RGB image received")
             return
 
+
+
         depth_image = self.bridge.imgmsg_to_cv2(depth_msg)
         depth_image = np.array(depth_image, dtype=np.float32)
 
@@ -156,10 +171,14 @@ class TimeSyncListener():
         depth_array = np.nan_to_num(depth_image, nan=0.0)
 
         # Clip negative values to 0
-        depth_array[depth_array < 1.5] = 0
+        depth_array[depth_array < 0.5] = 0
         depth_array[depth_array > 13] = 0
 
+
         results = self.model_loader.predict(rgb_image)
+
+
+
 
         # check if there is a prediction in the image
         if len(results[0].boxes) == 0:
@@ -172,35 +191,41 @@ class TimeSyncListener():
         point_cloud = depth_to_pointcloud_from_mask(
             depth_image=depth_array,
             intrinsic_matrix=self.intrinsic_matrix, mask=mask)
-
         #point_cloud, ind = point_cloud.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0)
 
-        point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
+        points_2d = pointcloud_to_2d(point_cloud)
+        points_3d = np.hstack((points_2d[:,[0]], np.zeros((points_2d.shape[0], 1)), points_2d[:,[1]]))
+
+        point_cloud_2d, left_points, right_points = edge_detection_2d(points=points_2d)
+        #point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
+
         #point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
 
 
-        if len(left_points) <= 20 or len(right_points) <= 20:
+        if len(left_points) <= 5 or len(right_points) <= 5:
             return
 
-        # Fit a line to the edge of the pointcloud
-        x_fine_l, y_fine_l, z_fine_l = fit_line_3d_smooth(points=left_points, smoothing_factor=1)
-        x_fine_r, y_fine_r, z_fine_r = fit_line_3d_smooth(points=right_points, smoothing_factor=1)
+        x_points, y_points = left_points[:, 0], left_points[:, 1]
+        xhat = savgol_filter(x_points, len(x_points), 2)
+        yhat = savgol_filter(y_points, len(y_points), 2)
+        points_fine_l = np.column_stack((xhat,np.zeros_like(xhat), yhat))
 
-        # Fit a line to the edge of the pointcloud
-        #points_fine_l = fit_line_3d_smooth_new(points=left_points)
-        #points_fine_r = fit_line_3d_smooth_new(points=right_points)
-
-        # Combine the x,y,z point to a single stack
-        points_fine_l = np.vstack((x_fine_l, y_fine_l, z_fine_l)).T
-        points_fine_r = np.vstack((x_fine_r, y_fine_r, z_fine_r)).T
+        x_points, y_points = right_points[:, 0], right_points[:, 1]
+        xhat = savgol_filter(x_points, len(x_points) , 2)
+        yhat = savgol_filter(y_points, len(y_points), 2)
+        points_fine_r = np.column_stack((xhat, np.zeros_like(xhat), yhat))
 
         # Publish information to ROS
-        # TODO: remove -10 (only for testing and easy better results)
-        self.left_path_publisher.publish_path(points_fine_l[:-30], frame_id)
-        self.right_path_publisher.publish_path(points_fine_r[:-30], frame_id)
+        self.left_path_publisher.publish_path(points_fine_l, frame_id)
+        self.right_path_publisher.publish_path(points_fine_r, frame_id)
 
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
-        self.point_cloud_publisher.publish_pointcloud(np.asarray(point_cloud.points), right_points, left_points, frame_id)
+
+
+        #points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
+        #points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
+
+        #self.point_cloud_publisher.publish_pointcloud(points_3d, points_3d_left, points_3d_right, frame_id)
 
         end_time = time.time()
         print(f"Function executed in {end_time - start_time:.6f} seconds")

@@ -86,3 +86,29 @@ def fit_line_3d_smooth_new(points):
     points_smooth = np.column_stack([x_fine.ravel(), y_fine.ravel(), z_fine.ravel()])
 
     return points_smooth
+
+def fit_polynomial(points, degree):
+    """
+    Fit a polynomial of a specified degree to a set of 2D points.
+
+    Parameters:
+    points (list of tuples): List of (x, y) points.
+    degree (int): Degree of the polynomial to fit.
+
+    Returns:
+    tuple: Coefficients of the fitted polynomial, and a function for evaluation.
+    """
+    # Extract x and y coordinates
+    x = np.array([point[0] for point in points])
+    y = np.array([point[1] for point in points])
+
+    # Fit the polynomial
+    coefficients = np.polyfit(x, y, degree)
+
+    # Create a polynomial function
+    poly_func = np.poly1d(coefficients)
+
+    return coefficients, poly_func
+
+
+

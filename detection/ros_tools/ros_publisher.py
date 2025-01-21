@@ -26,7 +26,7 @@ def compute_orientation(point_a, point_b):
 
 class PathPublisher:
     def __init__(self, topic_name='/pose_path'):
-        self.publisher = rospy.Publisher(topic_name, Path, queue_size=5)
+        self.publisher = rospy.Publisher(topic_name, Path, queue_size=1)
         self.frame_id = None
 
     def publish_path(self, points, frame_id):
@@ -48,80 +48,87 @@ class PathPublisher:
         # Apply the rotation
         points_ros = points #@ rotation_matrix_open3d_to_ros.T
 
+        # Initialize the Path message
         path = Path()
         path.header.stamp = rospy.Time.now()
         path.header.frame_id = self.frame_id
 
+        # Compute yaw angles and build poses
+        poses = []
         for i in range(2, len(points_ros) - 1):
             current_point = points_ros[i]
             next_point = points_ros[i + 1]
-            dx = next_point[0] - current_point[0]
-            dy = next_point[1] - current_point[1]
+            dx, dy = next_point[0] - current_point[0], next_point[1] - current_point[1]
             yaw = math.atan2(dy, dx)
             quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
 
+            # Create PoseStamped message
             pose_stamped = PoseStamped()
             pose_stamped.header.stamp = rospy.Time.now()
             pose_stamped.header.frame_id = self.frame_id
             pose_stamped.pose.position.x = current_point[0]
             pose_stamped.pose.position.y = current_point[1]
-            pose_stamped.pose.position.z = current_point[2] if len(current_point) > 2 else 0.0
+            pose_stamped.pose.position.z = current_point[2] if current_point.shape[0] > 2 else 0.0
             pose_stamped.pose.orientation.x = quaternion[0]
             pose_stamped.pose.orientation.y = quaternion[1]
             pose_stamped.pose.orientation.z = quaternion[2]
             pose_stamped.pose.orientation.w = quaternion[3]
 
-            path.poses.append(pose_stamped)
+            poses.append(pose_stamped)
 
+        path.poses = poses  # Assign all poses at once for efficiency
         self.publisher.publish(path)
 
 class MaskPublisher:
     def __init__(self,  topic_name='/ml/mask_image'):
-        self.publisher = rospy.Publisher(topic_name, Image, queue_size=5)
+        self.publisher = rospy.Publisher(topic_name, Image, queue_size=1)
 
         # OpenCV Bridge for converting images to ROS messages
         self.bridge = CvBridge()
 
         self.frame_id = None
 
-
     def publish_mask(self, image, results, frame_id):
+        """
+        Publish an image with overlayed masks.
+
+        Args:
+            image (numpy.ndarray): Original image (HxWx3).
+            results: Detection results containing masks.
+            frame_id (str): ROS frame ID for the published image.
+        """
         if results is None:
+            # Publish the original image if no results or masks are found
             image_msg = self.bridge.cv2_to_imgmsg(image, encoding="bgr8")
             self.publisher.publish(image_msg)
             return
 
         self.frame_id = frame_id
 
-        # Get the original image dimensions
+        # Precompute dimensions and initialize mask overlay
         image_height, image_width = image.shape[:2]
+        mask_overlay = np.zeros_like(image, dtype=np.uint8)
 
-        masks = results[0].masks
-        # Create a blank image for the mask overlay
-        mask_overlay = np.zeros_like(image)
+        # Extract masks and process in batches
+        masks = results[0].masks.data.cpu().numpy().astype(np.uint8)  # Convert all masks at once
+        masks_resized = np.stack([
+            cv2.resize(mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+            for mask in masks
+        ], axis=0)
 
-        # Apply each mask to the overlay with a different color
-        for i, mask in enumerate(masks.data):
-            # Convert the mask to a binary numpy array
-            binary_mask = mask.cpu().numpy().astype(np.uint8)
+        # Generate a fixed color (can use random or unique colors if needed)
+        color = np.array([255, 0, 0], dtype=np.uint8)
 
-            scaled_mask = cv2.resize(binary_mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
-
-            # Create a random color for the mask
-            color = [255, 0, 0]
-
-            # Apply the color to the mask
-            mask_colored = np.stack([scaled_mask * c for c in color], axis=-1)
-
-            # Add the colored mask to the overlay
+        # Overlay all masks in a vectorized manner
+        for scaled_mask in masks_resized:
+            mask_colored = (scaled_mask[..., None] * color).astype(np.uint8)  # Broadcast color
             mask_overlay = cv2.addWeighted(mask_overlay, 1.0, mask_colored, 0.5, 0)
 
-        # Combine the mask overlay with the original image
-        result_image = cv2.addWeighted(image, 1, mask_overlay, 0.75, 0)
+        # Combine the overlay with the original image
+        result_image = cv2.addWeighted(image, 1.0, mask_overlay, 0.75, 0)
 
-
+        # Convert to ROS message
         image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
-
         image_msg.header = Header()
         image_msg.header.stamp = rospy.Time.now()
 

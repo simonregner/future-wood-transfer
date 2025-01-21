@@ -81,73 +81,48 @@ def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
         o3d.geometry.PointCloud: Generated 3D point cloud from the masked region.
     """
 
+    # Load depth image if a path is provided
+    if isinstance(depth_image, str):
+        depth_image = cv2.imread(depth_image, cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000
+        if depth_image is None:
+            raise ValueError(f"Unable to load depth image from {depth_image}")
+    else:
+        depth_image = depth_image.astype(np.float32)
 
-
-    # Load the depth image
-    # image is saved in mm -> need to change back to meter
-    if type(depth_image) is str:
-        depth_image = cv2.imread(depth_image, cv2.IMREAD_UNCHANGED) / 1000
-    if depth_image is None:
-        raise ValueError(f"Unable to load depth image from {depth_image}")
-
-    # Convert depth to float32 if not already
-    depth_image = depth_image.astype(np.float32)
-    #print(f"Loaded depth image with shape: {depth_image.shape}")
-
-
-    # Remove the pixels which are closer than 0.5 meters to the camera
+    # Remove pixels closer than 0.5 meters
     depth_image[depth_image <= 0.5] = 0
 
-
-    # Ensure mask is of type uint8 and has the same size as the depth image
-    if mask.dtype != np.uint8:
-        mask = mask.astype(np.uint8)
+    # Ensure mask matches depth image size
     if mask.shape != depth_image.shape:
         mask = cv2.resize(mask, (depth_image.shape[1], depth_image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    # Apply mask to the depth image
-    masked_depth_image = cv2.bitwise_and(depth_image, depth_image, mask=mask)
+    # Combine mask with depth validity
+    valid_mask = (mask > 0) & (depth_image > 0)
 
-    # Print the maximum depth value
-    max_depth = np.max(masked_depth_image)
-    #print(f"Maximum depth mask value: {max_depth} meters")
+    # Extract valid depth values
+    depth = depth_image[valid_mask]
 
-    masked_depth_image[masked_depth_image > max_depth] = 0
+    if depth.size == 0:  # If no valid points, return an empty point cloud
+        return o3d.geometry.PointCloud()
 
-    # Get image dimensions
-    height, width = masked_depth_image.shape
+    # Get the pixel coordinates of valid points
+    v, u = np.where(valid_mask)  # v = row (y-coord), u = col (x-coord)
 
-    # Create a meshgrid of pixel indices
-    u, v = np.meshgrid(np.arange(width), np.arange(height))
-
-    # Flatten the indices
-    u = u.flatten()
-    v = v.flatten()
-
-    # Flatten the depth image
-    depth = masked_depth_image.flatten()
-
-    # Filter out points with no depth (zero or not in mask)
-    valid_depth = depth > 0
-    u = u[valid_depth]
-    v = v[valid_depth]
-    depth = depth[valid_depth]
-
-    # Compute the corresponding 3D points
+    # Extract intrinsic matrix parameters
     fx, fy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1]
     cx, cy = intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
 
+    # Convert pixel coordinates and depth to 3D coordinates
     x = (u - cx) * depth / fx
     y = (v - cy) * depth / fy
     z = depth
 
-    # Stack the points into a Nx3 array
-    points = np.stack((x, y, z), axis=-1)
+    # Stack into an Nx3 array
+    points = np.column_stack((x, y, z))
 
-    # Create an Open3D point cloud
+    # Create Open3D point cloud
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = o3d.utility.Vector3dVector(points)
-    point_cloud.paint_uniform_color((0, 0, 0))
 
     return point_cloud
 
