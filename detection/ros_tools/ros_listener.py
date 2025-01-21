@@ -193,7 +193,7 @@ class TimeSyncListener():
         # Validate sufficient edge points
         if len(left_points) <= 5 or len(right_points) <= 5:
             return
-s
+
         # Smooth left and right edge points
         def smooth_points(points):
             x, y = points[:, 0], points[:, 1]
