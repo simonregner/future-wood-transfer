@@ -119,7 +119,6 @@ class TimeSyncListener():
         except rospy.ROSException as e:
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
 
-
     def callback(self, image_msg, depth_msg):
         """
         Callback function that handles synchronized messages.
@@ -128,104 +127,87 @@ class TimeSyncListener():
 
         # Skip if still processing a previous frame
         if rospy.Time.now() - last_processed_time < rospy.Duration(0, 200000000):
-            return  # Skip this frame
+            return
 
         last_processed_time = rospy.Time.now()
-
         start_time = time.time()
+
+        # Initialize intrinsic matrix and image type if not already done
         if self.intrinsic_matrix is None:
             self.single_listen(self.camera_info_topic, CameraInfo)
 
-        # TODO: check if this is working
         if self.rgb_image_type is None:
             self.get_available_image_topic()
-            #self.ts.registerCallback(self.callback)
             return
 
-        # Check if the timestamp is the same
-        if image_msg.header.stamp.secs != depth_msg.header.stamp.secs:
+        # Validate timestamps for synchronization
+        if image_msg.header.stamp != depth_msg.header.stamp:
             rospy.loginfo("NO synchronized messages received")
-            rospy.loginfo(f"Image timestamp: {image_msg.header.stamp}")
-            rospy.loginfo(f"Depth timestamp: {depth_msg.header.stamp}")
             return
 
-        # TODO: Check
         frame_id = image_msg.header.frame_id
 
-        # Convert correct image
-        if self.rgb_image_type is Image:
-            rgb_image = self.bridge.imgmsg_to_cv2(image_msg)
-            rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGRA2BGR)
-        elif self.rgb_image_type is CompressedImage:
-            rgb_image = self.bridge.compressed_imgmsg_to_cv2(image_msg)
-        else:
-            rospy.loginfo(f"No RGB image received")
+        # Convert RGB image
+        try:
+            if self.rgb_image_type is Image:
+                rgb_image = self.bridge.imgmsg_to_cv2(image_msg, desired_encoding="bgr8")
+            elif self.rgb_image_type is CompressedImage:
+                rgb_image = self.bridge.compressed_imgmsg_to_cv2(image_msg)
+            else:
+                rospy.loginfo("No RGB image received")
+                return
+        except Exception as e:
+            rospy.logwarn(f"Error converting RGB image: {e}")
             return
 
+        # Convert depth image
+        try:
+            depth_image = self.bridge.imgmsg_to_cv2(depth_msg).astype(np.float32)
+        except Exception as e:
+            rospy.logwarn(f"Error converting depth image: {e}")
+            return
 
+        # Process depth image
+        depth_image = np.nan_to_num(depth_image, nan=0.0)
+        depth_image = np.clip(depth_image, 0.5, 13)
 
-        depth_image = self.bridge.imgmsg_to_cv2(depth_msg)
-        depth_image = np.array(depth_image, dtype=np.float32)
-
-        # Replace NaN values with 0 (or another appropriate value)
-        depth_array = np.nan_to_num(depth_image, nan=0.0)
-
-        # Clip negative values to 0
-        depth_array[depth_array < 0.5] = 0
-        depth_array[depth_array > 13] = 0
-
-
+        # Perform prediction
         results = self.model_loader.predict(rgb_image)
 
-
-
-
-        # check if there is a prediction in the image
-        if len(results[0].boxes) == 0:
+        # Handle no predictions
+        if not results[0].boxes:
             self.mask_image_publisher.publish_mask(rgb_image, None, frame_id)
             return
 
+        # Process mask
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
         mask = keep_largest_component(mask)
 
-        point_cloud = depth_to_pointcloud_from_mask(
-            depth_image=depth_array,
-            intrinsic_matrix=self.intrinsic_matrix, mask=mask)
-        #point_cloud, ind = point_cloud.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0)
+        # Convert depth to point cloud
+        point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
 
+        # 2D edge detection
         points_2d = pointcloud_to_2d(point_cloud)
-        points_3d = np.hstack((points_2d[:,[0]], np.zeros((points_2d.shape[0], 1)), points_2d[:,[1]]))
-
         point_cloud_2d, left_points, right_points = edge_detection_2d(points=points_2d)
-        #point_cloud, left_points, right_points = edge_detection(point_cloud=point_cloud)
 
-        #point_cloud, left_points, right_points = split_pointcloud(point_cloud=point_cloud)
-
-
+        # Validate sufficient edge points
         if len(left_points) <= 5 or len(right_points) <= 5:
             return
+s
+        # Smooth left and right edge points
+        def smooth_points(points):
+            x, y = points[:, 0], points[:, 1]
+            x_smooth = savgol_filter(x, len(x), 2)
+            y_smooth = savgol_filter(y, len(y), 2)
+            return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
 
-        x_points, y_points = left_points[:, 0], left_points[:, 1]
-        xhat = savgol_filter(x_points, len(x_points), 2)
-        yhat = savgol_filter(y_points, len(y_points), 2)
-        points_fine_l = np.column_stack((xhat,np.zeros_like(xhat), yhat))
+        points_fine_l = smooth_points(left_points)
+        points_fine_r = smooth_points(right_points)
 
-        x_points, y_points = right_points[:, 0], right_points[:, 1]
-        xhat = savgol_filter(x_points, len(x_points) , 2)
-        yhat = savgol_filter(y_points, len(y_points), 2)
-        points_fine_r = np.column_stack((xhat, np.zeros_like(xhat), yhat))
-
-        # Publish information to ROS
+        # Publish paths and masks
         self.left_path_publisher.publish_path(points_fine_l, frame_id)
         self.right_path_publisher.publish_path(points_fine_r, frame_id)
-
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
-
-
-        #points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
-        #points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
-
-        #self.point_cloud_publisher.publish_pointcloud(points_3d, points_3d_left, points_3d_right, frame_id)
 
         end_time = time.time()
         print(f"Function executed in {end_time - start_time:.6f} seconds")
