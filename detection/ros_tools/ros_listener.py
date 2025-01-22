@@ -13,11 +13,11 @@ from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_ma
 from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d
 from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
 
-import detection.ros_tools.publisher.ros_path_publisher as pp
+import detection.ros_tools.publisher.ros_path_publisher as ros_path_publisher
+import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
+import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_publisher
 
 from detection.path.point_function import fit_line_3d_smooth, fit_polynomial
-
-from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
 
 from detection.tools.mask import  keep_largest_component
 
@@ -39,7 +39,7 @@ from rospy.timer import Rate
 
 last_processed_time = rospy.Time()
 
-class TimeSyncListener():
+class TimeSyncListener:
     def __init__(self, model_loader):
         # Initialize the node
         rospy.init_node('time_sync_listener', anonymous=True)
@@ -57,6 +57,7 @@ class TimeSyncListener():
         self.image_sub = None
 
         # Set timer for pause
+        # TODO: Change for not static
         self.timers = [200000000, 200000000, 200000000, 200000000, 200000000]
 
         # Subscribers for the topics
@@ -68,14 +69,14 @@ class TimeSyncListener():
         self.ts = TimeSynchronizer([self.image_sub, self.depth_sub], 1)
         self.ts.registerCallback(self.callback)
 
-        self.left_path_publisher = PathPublisher(topic_name='/path/left_path')
-        self.right_path_publisher = PathPublisher(topic_name='/path/right_path')
+        self.left_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path')
+        self.right_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path')
 
-        self.path_publisher = pp.PathPublisher(topic_name='/path_publisher')
+        self.path_publisher = ros_path_publisher.PathPublisher(topic_name='/path_publisher')
 
-        self.mask_image_publisher = MaskPublisher(topic_name='/ml/mask_image')
+        self.mask_image_publisher = ros_mask_publisher.MaskPublisher(topic_name='/ml/mask_image')
 
-        self.point_cloud_publisher = PointcloudPublisher(topic_name='/ml/pointcloud')
+        self.point_cloud_publisher = ros_pointcloud_publisher.PointcloudPublisher(topic_name='/ml/pointcloud')
 
         rospy.loginfo("Time sync listener initialized and running")
 
@@ -197,6 +198,9 @@ class TimeSyncListener():
         points_2d = pointcloud_to_2d(point_cloud)
         point_cloud_2d, left_points, right_points = edge_detection_2d(points=points_2d)
 
+        left_points = left_points[left_points[:, 1] <= 8]
+        right_points = right_points[right_points[:, 1] <= 8]
+
         # Validate sufficient edge points
         if len(left_points) <= 5 or len(right_points) <= 5:
             return
@@ -217,6 +221,11 @@ class TimeSyncListener():
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
 
         self.path_publisher.publish_path([points_fine_l, points_fine_r], frame_id)
+
+        #points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
+        #points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
+
+        #self.point_cloud_publisher.publish_pointcloud(point_cloud.points, points_3d_right, points_3d_left, frame_id)
 
         end_time = time.time()
 
