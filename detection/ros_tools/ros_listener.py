@@ -13,6 +13,8 @@ from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_ma
 from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d
 from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
 
+import detection.ros_tools.publisher.ros_path_publisher as pp
+
 from detection.path.point_function import fit_line_3d_smooth, fit_polynomial
 
 from detection.ros_tools.ros_publisher import PathPublisher, MaskPublisher, PointcloudPublisher
@@ -54,6 +56,9 @@ class TimeSyncListener():
         self.rgb_image_type = None
         self.image_sub = None
 
+        # Set timer for pause
+        self.timers = [200000000, 200000000, 200000000, 200000000, 200000000]
+
         # Subscribers for the topics
         self.depth_sub = Subscriber('/hazard_front/zed_node_front/depth/depth_registered', Image)
 
@@ -65,6 +70,8 @@ class TimeSyncListener():
 
         self.left_path_publisher = PathPublisher(topic_name='/path/left_path')
         self.right_path_publisher = PathPublisher(topic_name='/path/right_path')
+
+        self.path_publisher = pp.PathPublisher(topic_name='/path_publisher')
 
         self.mask_image_publisher = MaskPublisher(topic_name='/ml/mask_image')
 
@@ -126,7 +133,7 @@ class TimeSyncListener():
         global last_processed_time
 
         # Skip if still processing a previous frame
-        if rospy.Time.now() - last_processed_time < rospy.Duration(0, 200000000):
+        if rospy.Time.now() - last_processed_time < rospy.Duration(0, int(sum(self.timers) / 5) + 50000000):
             return
 
         last_processed_time = rospy.Time.now()
@@ -195,21 +202,25 @@ class TimeSyncListener():
             return
 
         # Smooth left and right edge points
-        def smooth_points(points):
+        def smooth_points(points, poly_order = 2):
             x, y = points[:, 0], points[:, 1]
-            x_smooth = savgol_filter(x, len(x), 2)
-            y_smooth = savgol_filter(y, len(y), 2)
+            x_smooth = savgol_filter(x, len(x), poly_order)
+            y_smooth = savgol_filter(y, len(y), poly_order)
             return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
 
-        points_fine_l = smooth_points(left_points)
-        points_fine_r = smooth_points(right_points)
+        points_fine_l = smooth_points(left_points, 2)
+        points_fine_r = smooth_points(right_points, 2)
 
         # Publish paths and masks
         self.left_path_publisher.publish_path(points_fine_l, frame_id)
         self.right_path_publisher.publish_path(points_fine_r, frame_id)
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
 
+        self.path_publisher.publish_path([points_fine_l, points_fine_r], frame_id)
+
         end_time = time.time()
+
+        self.timers = [int((end_time - start_time) * 10 ** 9)] + self.timers [:-1]
         print(f"Function executed in {end_time - start_time:.6f} seconds")
 
 
