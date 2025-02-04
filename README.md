@@ -100,3 +100,12 @@ python road_detection.py
 ```
 
 ### Docker Container
+
+# Push Docker
+```
+sudo docker image tag future_wood_transfer:latest simonregner/future_wood_transfer:v1.5
+```
+
+```
+sudo docker image push simonregner/future_wood_transfer:v1.5
+```

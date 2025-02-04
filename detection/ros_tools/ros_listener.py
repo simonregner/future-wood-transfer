@@ -2,7 +2,7 @@ import sys
 sys.path.append("..")
 
 import rospy
-from sensor_msgs.msg import Image, CompressedImage, CameraInfo
+from sensor_msgs.msg import Image, CompressedImage, CameraInfo, Imu
 from message_filters import Subscriber, TimeSynchronizer
 
 from cv_bridge import CvBridge
@@ -20,6 +20,8 @@ import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_
 from detection.path.point_function import fit_line_3d_smooth, fit_polynomial
 
 from detection.tools.mask import  keep_largest_component
+
+from scipy.spatial.transform import Rotation as R
 
 import time
 
@@ -62,6 +64,8 @@ class TimeSyncListener:
 
         # Subscribers for the topics
         self.depth_sub = Subscriber('/hazard_front/zed_node_front/depth/depth_registered', Image)
+        self.imu_sub = Subscriber('/hazard_front/zed_node_front/imu/data', Imu)
+
 
         self.get_available_image_topic()
 
@@ -126,6 +130,11 @@ class TimeSyncListener:
                 print(msg)
         except rospy.ROSException as e:
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
+
+    def quaternion_to_euler(self, q):
+        """Convert quaternion to Euler angles (roll, pitch, yaw)."""
+        rotation = R.from_quat([q.x, q.y, q.z, q.w])
+        return rotation.as_euler('xyz', degrees=False)
 
     def callback(self, image_msg, depth_msg):
         """
@@ -194,6 +203,10 @@ class TimeSyncListener:
         # Convert depth to point cloud
         point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
 
+        #imu_orientation = imu_msg.orientation
+        #roll, pitch, _ = self.quaternion_to_euler(imu_orientation)
+        #rotation = R.from_euler('xyz', [roll, pitch, 0], degrees=False)
+
         # 2D edge detection
         points_2d = pointcloud_to_2d(point_cloud)
         point_cloud_2d, left_points, right_points = edge_detection_2d(points=points_2d)
@@ -222,10 +235,10 @@ class TimeSyncListener:
 
         self.path_publisher.publish_path([points_fine_l, points_fine_r], frame_id)
 
-        #points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
-        #points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
+        points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
+        points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
 
-        #self.point_cloud_publisher.publish_pointcloud(point_cloud.points, points_3d_right, points_3d_left, frame_id)
+        self.point_cloud_publisher.publish_pointcloud(point_cloud.points, points_3d_right, points_3d_left, frame_id)
 
         end_time = time.time()
 

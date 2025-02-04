@@ -90,17 +90,33 @@ def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
         depth_image = depth_image.astype(np.float32)
 
     # Remove pixels closer than 0.5 meters
-    depth_image[depth_image <= 0.5] = 0
+    #depth_image[depth_image <= 0.5] = 0
+    #depth_image[depth_image <= 15] = 255
 
     # Ensure mask matches depth image size
     if mask.shape != depth_image.shape:
         mask = cv2.resize(mask, (depth_image.shape[1], depth_image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    # Combine mask with depth validity
-    valid_mask = (mask > 0) & (depth_image > 0)
+    # Create a mask where the depth value is not between 0.5 and 13
+    invalid_depth_mask = ((depth_image < 0.5) | (depth_image > 13)).astype(np.uint8)
+
+    # Combine with the given area mask (only allow points inside the area mask)
+    # Area mask should be binary (0 or 255), so normalize it
+    area_mask_binary = (mask > 0).astype(np.uint8)
+
+    # Final mask: combine invalid depth points with the given area
+    final_mask = invalid_depth_mask & area_mask_binary
+
+    # Convert final mask to the required format for OpenCV inpainting (0 or 255)
+    final_mask = final_mask * 255  # Scale to 0 or 255
+
+
+    #depth_image = cv2.inpaint(depth_image.astype(np.uint8), final_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
 
     # Extract valid depth values
+    valid_mask = (mask > 0) & (depth_image > 0)
     depth = depth_image[valid_mask]
+
 
     if depth.size == 0:  # If no valid points, return an empty point cloud
         return o3d.geometry.PointCloud()
