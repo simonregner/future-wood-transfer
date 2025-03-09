@@ -3,6 +3,8 @@ import numpy as np
 
 from ros_tools.ros_listener import TimeSyncListener
 
+import matplotlib.pyplot as plt
+
 debug = False
 
 class YOLOModelLoader:
@@ -27,7 +29,7 @@ class YOLOModelLoader:
             print("Model is already loaded.")
 
     @classmethod
-    def predict(cls, image, conf=0.80):
+    def predict(cls, image, conf=0.50):
         """
         Perform inference using the loaded YOLO model.
 
@@ -42,7 +44,7 @@ class YOLOModelLoader:
             raise ValueError("Model is not loaded. Please call load_model() first.")
         if type(image) is not str:
             image = np.array(image, dtype=np.uint8)
-        results = cls.model.predict(source=image, conf=conf)
+        results = cls.model.predict(source=image, conf=conf, retina_masks=True)#, agnostic_nms=True, retina_masks=True)
         return results
 
 def show_results(results):
@@ -95,6 +97,37 @@ if __name__ == "__main__":
         ])
 
         mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
+
+        print("BOXES")
+        print(results[0].boxes.xyxy[0].cpu().numpy())
+
+        box_value = results[0].boxes.xyxy[0].cpu().numpy()
+
+
+        def find_last_mask_pixel(mask, col, bottom, top):
+            """
+            mask: 2D numpy array with 0 and 255 values.
+            col: the column index at which to search (either left or right boundary of the bounding box).
+            bottom: row index of the bottom boundary of the bounding box.
+            top: row index of the top boundary (usually 0 or the top of the bounding box).
+            Returns the row index of the last mask pixel (255) when scanning upward.
+            """
+            last_mask_row = None
+            for row in range(bottom, top - 1, -1):  # move upward
+                if mask[row, col] == 255:
+                    last_mask_row = row
+                else:
+                    # As soon as you hit a non-mask pixel, stop scanning.
+                    break
+            return last_mask_row
+
+
+        left_mask = find_last_mask_pixel(mask, col=int(box_value[0]) + 1, bottom=int(box_value[3]) - 1, top=int(box_value[1]) + 1)
+        right_mask = find_last_mask_pixel(mask, col=int(box_value[2]) - 1, bottom=int(box_value[3]) - 1, top=int(box_value[1]) + 1)
+        print("Mask END: ", left_mask, right_mask)
+
+        plt.imshow(mask, cmap="gray")
+        plt.show()
 
 
         point_cloud = depth_to_pointcloud_from_mask(depth_image='../../ROSBAG_images/ROSBAG_01/depth/depth_1719476048548561819.png', intrinsic_matrix=intrinsic_matrix, mask=mask)

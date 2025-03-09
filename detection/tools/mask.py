@@ -112,3 +112,24 @@ def extract_lane_masks(road_mask):
 
     return left_lane_mask, right_lane_mask
 
+def get_mask_edge_distance(mask):
+    # For the left side
+    left_condition = mask[:, 0] != 255
+    # np.where returns all indices where condition is True
+    left_indices = np.where(left_condition)[0]
+    # Get the bottom-most one (largest index)
+    if left_indices.size > 0:
+        left_row_index = left_indices[-1]
+    else:
+        left_row_index = None
+
+    # For the right side
+    right_condition = mask[:, -1] != 255
+    right_indices = np.where(right_condition)[0]
+    if right_indices.size > 0:
+        right_row_index = right_indices[-1]
+    else:
+        right_row_index = None
+
+    return left_row_index, right_row_index
+

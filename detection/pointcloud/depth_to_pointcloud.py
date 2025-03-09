@@ -69,76 +69,59 @@ def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
     """
     Convert a masked depth image into a 3D point cloud.
 
+    If a file path is provided for the depth image, it is loaded; otherwise, the depth image
+    is assumed to be a NumPy array with depth values in meters. The mask (binary, with values 0 or 255)
+    is used to filter the depth image. Depth values outside the valid range [0.5, 13] are ignored.
+
     Args:
-        depth_image_path (str): Path to the depth image in meters, shape (H, W).
-        intrinsic_matrix (numpy.ndarray): Camera intrinsic matrix, shape (3, 3).
-                                          [ [fx,  0, cx],
-                                            [ 0, fy, cy],
-                                            [ 0,  0,  1] ]
-        mask (numpy.ndarray): Binary mask (0 or 255) with shape (H, W) to filter depth image.
+        depth_image (str or np.ndarray): Depth image in meters (H, W) or a path to the image file.
+        intrinsic_matrix (np.ndarray): Camera intrinsic matrix, shape (3, 3), formatted as:
+            [ [fx,  0, cx],
+              [ 0, fy, cy],
+              [ 0,  0,  1] ]
+        mask (np.ndarray): Binary mask (0 or 255) with shape (H, W) to filter the depth image.
 
     Returns:
         o3d.geometry.PointCloud: Generated 3D point cloud from the masked region.
     """
 
-    # Load depth image if a path is provided
+    # Load depth image if a file path is provided
     if isinstance(depth_image, str):
-        depth_image = cv2.imread(depth_image, cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000
-        if depth_image is None:
+        depth_image_loaded = cv2.imread(depth_image, cv2.IMREAD_UNCHANGED)
+        if depth_image_loaded is None:
             raise ValueError(f"Unable to load depth image from {depth_image}")
+        depth_image = depth_image_loaded.astype(np.float32) / 1000.0  # Convert from millimeters to meters
     else:
         depth_image = depth_image.astype(np.float32)
 
-    # Remove pixels closer than 0.5 meters
-    #depth_image[depth_image <= 0.5] = 0
-    #depth_image[depth_image <= 15] = 255
-
-    # Ensure mask matches depth image size
+    # Ensure the mask matches the depth image size
     if mask.shape != depth_image.shape:
         mask = cv2.resize(mask, (depth_image.shape[1], depth_image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    # Create a mask where the depth value is not between 0.5 and 13
-    invalid_depth_mask = ((depth_image < 0.5) | (depth_image > 13)).astype(np.uint8)
-
-    # Combine with the given area mask (only allow points inside the area mask)
-    # Area mask should be binary (0 or 255), so normalize it
-    area_mask_binary = (mask > 0).astype(np.uint8)
-
-    # Final mask: combine invalid depth points with the given area
-    final_mask = invalid_depth_mask & area_mask_binary
-
-    # Convert final mask to the required format for OpenCV inpainting (0 or 255)
-    final_mask = final_mask * 255  # Scale to 0 or 255
-
-
-    #depth_image = cv2.inpaint(depth_image.astype(np.uint8), final_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-
-    # Extract valid depth values
+    # Create a valid mask: using the provided mask and excluding zero depth values
     valid_mask = (mask > 0) & (depth_image > 0)
-    depth = depth_image[valid_mask]
 
+    # Create an array with NaNs and insert valid depth values
+    depth_filtered = np.full(depth_image.shape, np.nan, dtype=np.float32)
+    depth_filtered[valid_mask] = depth_image[valid_mask]
 
-    if depth.size == 0:  # If no valid points, return an empty point cloud
-        return o3d.geometry.PointCloud()
+    # Convert the filtered depth image to an Open3D Image
+    depth_o3d = o3d.geometry.Image(depth_filtered)
 
-    # Get the pixel coordinates of valid points
-    v, u = np.where(valid_mask)  # v = row (y-coord), u = col (x-coord)
+    # Set up Open3D camera intrinsics
+    pinhole_camera_intrinsic = o3d.camera.PinholeCameraIntrinsic()
+    pinhole_camera_intrinsic.set_intrinsics(
+        width=depth_image.shape[1],
+        height=depth_image.shape[0],
+        fx=intrinsic_matrix[0, 0],
+        fy=intrinsic_matrix[1, 1],
+        cx=intrinsic_matrix[0, 2],
+        cy=intrinsic_matrix[1, 2]
+    )
 
-    # Extract intrinsic matrix parameters
-    fx, fy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1]
-    cx, cy = intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
-
-    # Convert pixel coordinates and depth to 3D coordinates
-    x = (u - cx) * depth / fx
-    y = (v - cy) * depth / fy
-    z = depth
-
-    # Stack into an Nx3 array
-    points = np.column_stack((x, y, z))
-
-    # Create Open3D point cloud
-    point_cloud = o3d.geometry.PointCloud()
-    point_cloud.points = o3d.utility.Vector3dVector(points)
-
-    return point_cloud
+    # Create and return the point cloud from the depth image
+    return o3d.geometry.PointCloud.create_from_depth_image(
+        depth_o3d,
+        pinhole_camera_intrinsic
+    )
 

@@ -1,10 +1,10 @@
 from ultralytics import YOLO
 
 # Load a COCO-pretrained YOLO11n model
-model = YOLO("../detection/best.pt")
+model = YOLO("runs/segment/yolov12/weights/best.pt")
 
 # Run inference with the YOLO11n model on the 'bus.jpg' image
-results = model("test_images/image_cross_01.png")
+results = model("test_images/IMG_8566.jpeg", conf=0.5)
 
 for result in results:
     boxes = result.boxes  # Boxes object for bounding box outputs

@@ -8,11 +8,11 @@ import os
 import matplotlib.pyplot as plt
 
 # Parameters
-bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/fwt_2024-06-27-10-48-48_8.bag'  # insert bagfile
-rgb_topic = "/hazard_front/zed_node_front/left/image_rect_color/compressed"
+bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/fwt_uni_settings_04.bag'  # insert bagfile
+rgb_topic = "/hazard_front/zed_node_front/left/image_rect_color"
 depth_topic = "/hazard_front/zed_node_front/depth/depth_registered"
 camera_topic = "/hazard_front/zed_node_front/depth/camera_info"
-output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_08"
+output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_UNI_06"
 frame_skip = 60  # Define how many frames to skip
 
 # Create output directory if it doesn't exist
@@ -57,7 +57,7 @@ with rosbag.Bag(bag_file_path, 'r') as bag:
                 timestamp = str(t.to_nsec())
 
                 # Process and save the RGB image
-                cv_image = bridge.compressed_imgmsg_to_cv2(rgb_msg)
+                cv_image = bridge.imgmsg_to_cv2(rgb_msg)
                 cv2.imwrite(os.path.join(output_dir, f'images/rgb_{timestamp}.png'), cv_image)
                 print(f'Saved RGB image at {timestamp}')
 

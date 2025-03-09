@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     build-essential \
     curl \
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python3.9 as the default
@@ -34,11 +35,37 @@ RUN pip install ultralytics --no-deps
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt --ignore-installed
 
-# Copy your Python script to the container
+# Copy your project (including the custom ROS package) into the container.
+# Assumes your custom package is under detection/ros_tools/road_lines_msg.
 COPY . /detection
 
-# Set the working directory
+COPY ./ros_tools/road_lines_msg /catkin_ws/src/road_lines_msg
+
+
+RUN cd /catkin_ws && echo "catkin_make" && \
+    /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make && catkin_make install" && \
+    echo "source /catkin_ws/devel/setup.bash" >> /root/.bashrc
+    #echo "source /root/.bashrc"
+#RUN echo "catkin_make install"
+#RUN echo "source /catkin_ws/devel/setup.bash" >> /root/.bashrc
+
+COPY ./ros_entrypoint.sh /ros_entrypoint.sh
+
+# Make sure the entrypoint script is executable
+RUN chmod +x /ros_entrypoint.sh
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+
+
+# Set the working directory for your application
 WORKDIR /detection
 
+
 # Command to run your Python script
+#CMD ["bash"]
 CMD ["python", "road_detection.py"]
+
+# Make the entrypoint script executable
+#RUN chmod +x entrypoint.sh
+
+#CMD ["./entrypoint.sh"]

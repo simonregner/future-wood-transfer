@@ -1,15 +1,13 @@
+import cv2
+import numpy as np
 import rospy
-
+from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 
-import numpy as np
-import cv2
-from cv_bridge import CvBridge
-
 
 class MaskPublisher:
-    def __init__(self,  topic_name='/ml/mask_image'):
+    def __init__(self, topic_name='/ml/mask_image'):
         self.publisher = rospy.Publisher(topic_name, Image, queue_size=1)
 
         # OpenCV Bridge for converting images to ROS messages
@@ -58,6 +56,7 @@ class MaskPublisher:
 
         # Convert to ROS message
         image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
+        image_msg = self.bridge.cv2_to_imgmsg(results[0].plot())
         image_msg.header = Header()
         image_msg.header.stamp = rospy.Time.now()
 

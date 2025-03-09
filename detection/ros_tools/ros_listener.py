@@ -10,34 +10,27 @@ from cv_bridge import CvBridge
 import numpy as np
 
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d
+from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d, remove_edge_points
 from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
 
 import detection.ros_tools.publisher.ros_path_publisher as ros_path_publisher
 import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
 import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_publisher
+import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
-from detection.path.point_function import fit_line_3d_smooth, fit_polynomial
-
-from detection.tools.mask import  keep_largest_component
+from detection.tools.mask import  keep_largest_component, get_mask_edge_distance
 
 from scipy.spatial.transform import Rotation as R
 
 import time
 
-import cv2
-
-from scipy.interpolate import splprep, splev
-
-from scipy.interpolate import make_interp_spline
-
 from scipy.signal import savgol_filter
 
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn.pipeline import make_pipeline
+import matplotlib.pyplot as plt
 
-from rospy.timer import Rate
+from skimage.restoration import inpaint_biharmonic
+
+
 
 last_processed_time = rospy.Time()
 
@@ -76,7 +69,11 @@ class TimeSyncListener:
         self.left_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path')
         self.right_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path')
 
-        self.path_publisher = ros_path_publisher.PathPublisher(topic_name='/path_publisher')
+        self.left_path_publisher_2 = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path_2')
+        self.right_path_publisher_2 = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path_2')
+
+        self.left_road_lines_publisher = ros_road_lines_publisher.RoadLinesPublisher(topic_name='/road/road_lines_topic')
+        #self.right_road_lines_publisher = ros_road_lines_publisher.RoadLinesPublisher(topic_name='/road/right_road_lines_topic')
 
         self.mask_image_publisher = ros_mask_publisher.MaskPublisher(topic_name='/ml/mask_image')
 
@@ -138,12 +135,21 @@ class TimeSyncListener:
 
     def callback(self, image_msg, depth_msg):
         """
-        Callback function that handles synchronized messages.
+        Callback function that handles synchronized RGB and depth messages.
+
+        This function:
+          - Skips processing if a previous frame is still being processed.
+          - Ensures the intrinsic matrix and image type are initialized.
+          - Converts ROS image messages to OpenCV images.
+          - Processes the depth image and performs prediction.
+          - Extracts edge points from the predicted masks.
+          - Smooths the left and right edge paths and publishes them.
         """
         global last_processed_time
 
         # Skip if still processing a previous frame
-        if rospy.Time.now() - last_processed_time < rospy.Duration(0, int(sum(self.timers) / 5) + 50000000):
+        wait_duration = rospy.Duration(0, int(sum(self.timers) / 5) + 50000000)
+        if rospy.Time.now() - last_processed_time < wait_duration:
             return
 
         last_processed_time = rospy.Time.now()
@@ -184,61 +190,85 @@ class TimeSyncListener:
             rospy.logwarn(f"Error converting depth image: {e}")
             return
 
-        # Process depth image
+        # Process depth image: replace NaNs with zeros and clip to valid range
         depth_image = np.nan_to_num(depth_image, nan=0.0)
         depth_image = np.clip(depth_image, 0.5, 13)
 
-        # Perform prediction
+        # If depth and RGB dimensions differ, attempt a reshape (this is a no-op if dimensions already match)
+        if rgb_image.shape[0] != depth_image.shape[0] or rgb_image.shape[1] != depth_image.shape[1]:
+            depth_image = depth_image.reshape((rgb_image.shape[0], rgb_image.shape[1], 1))
+
+        # Perform prediction using the loaded model
         results = self.model_loader.predict(rgb_image)
 
-        # Handle no predictions
+        # If no predictions are found, publish the mask and exit early
         if not results[0].boxes:
             self.mask_image_publisher.publish_mask(rgb_image, None, frame_id)
             return
 
-        # Process mask
-        mask = results[0].masks.data[0].cpu().numpy().astype(np.uint8) * 255
-        mask = keep_largest_component(mask)
+        left_paths = []
+        right_paths = []
+        boxes = results[0].boxes.xyxy
 
-        # Convert depth to point cloud
-        point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
+        # Process each mask in the prediction results
+        for i, mask_data in enumerate(results[0].masks.data):
+            # Process mask: convert to uint8 and keep the largest connected component
+            mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
+            mask = keep_largest_component(mask)
 
-        #imu_orientation = imu_msg.orientation
-        #roll, pitch, _ = self.quaternion_to_euler(imu_orientation)
-        #rotation = R.from_euler('xyz', [roll, pitch, 0], degrees=False)
+            # Convert depth to point cloud from the mask
+            point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
 
-        # 2D edge detection
-        points_2d = pointcloud_to_2d(point_cloud)
-        point_cloud_2d, left_points, right_points = edge_detection_2d(points=points_2d)
+            # 2D edge detection
+            points_2d = pointcloud_to_2d(point_cloud)
+            left_points, right_points = edge_detection_2d(
+                points_3D=np.asarray(point_cloud.points),
+                points_2D=points_2d
+            )
 
-        left_points = left_points[left_points[:, 1] <= 8]
-        right_points = right_points[right_points[:, 1] <= 8]
+            # Filter edge points using the provided function
+            filtered_left_points, filtered_right_points = remove_edge_points(
+                mask, boxes[i], depth_image, left_points, right_points, self.intrinsic_matrix
+            )
 
-        # Validate sufficient edge points
-        if len(left_points) <= 5 or len(right_points) <= 5:
-            return
+            # Validate that sufficient edge points exist
+            if len(filtered_left_points) <= 2 or len(filtered_right_points) <= 2:
+                return
 
-        # Smooth left and right edge points
-        def smooth_points(points, poly_order = 2):
-            x, y = points[:, 0], points[:, 1]
-            x_smooth = savgol_filter(x, len(x), poly_order)
-            y_smooth = savgol_filter(y, len(y), poly_order)
-            return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
+            # Smooth left and right edge points using Savitzky–Golay filter
+            def smooth_points(points, poly_order=2):
+                x, y = points[:, 0], points[:, 1]
+                x_smooth = savgol_filter(x, len(x), poly_order)
+                y_smooth = savgol_filter(y, len(y), poly_order)
+                # Return 3D points with y set to zero (or replaced by any other value if needed)
+                return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
 
-        points_fine_l = smooth_points(left_points, 2)
-        points_fine_r = smooth_points(right_points, 2)
+            points_fine_l = smooth_points(filtered_left_points[:, [0, 2]], poly_order=2)
+            points_fine_r = smooth_points(filtered_right_points[:, [0, 2]], poly_order=2)
 
-        # Publish paths and masks
-        self.left_path_publisher.publish_path(points_fine_l, frame_id)
-        self.right_path_publisher.publish_path(points_fine_r, frame_id)
+            left_paths.append(points_fine_l)
+            right_paths.append(points_fine_r)
+
+        # Publish the first set of left/right paths
+        self.left_path_publisher.publish_path(left_paths[0], frame_id)
+        self.right_path_publisher.publish_path(right_paths[0], frame_id)
+
+        # If more than one path exists, publish the second set; otherwise publish empty paths
+        if len(left_paths) > 1:
+            self.left_path_publisher_2.publish_path(left_paths[1], frame_id)
+            self.right_path_publisher_2.publish_path(right_paths[1], frame_id)
+        else:
+            self.left_path_publisher_2.publish_path([], frame_id)
+            self.right_path_publisher_2.publish_path([], frame_id)
+
+        self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id)
         self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
 
-        self.path_publisher.publish_path([points_fine_l, points_fine_r], frame_id)
+        if False:
+            #points_3d_left = np.hstack((filtered_left_points[:, [0]], np.zeros((filtered_left_points.shape[0], 1)), filtered_left_points[:, [1]]))
+            #points_3d_right = np.hstack((filtered_right_points[:, [0]], np.zeros((filtered_right_points.shape[0], 1)), filtered_right_points[:, [1]]))
 
-        points_3d_left = np.hstack((left_points[:, [0]], np.zeros((left_points.shape[0], 1)), left_points[:, [1]]))
-        points_3d_right = np.hstack((right_points[:, [0]], np.zeros((right_points.shape[0], 1)), right_points[:, [1]]))
-
-        self.point_cloud_publisher.publish_pointcloud(point_cloud.points, points_3d_right, points_3d_left, frame_id)
+            self.point_cloud_publisher.publish_pointcloud(point_cloud.points, filtered_right_points, filtered_left_points, frame_id)
 
         end_time = time.time()
 
