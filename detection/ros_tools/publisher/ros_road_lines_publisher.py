@@ -2,7 +2,7 @@
 #sys.path.append('../../')
 import rospy
 
-from road_lines_msg.msg import RoadLinesMsg
+from road_lines_msg.msg import RoadLinesMsg, RoadLine
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 
@@ -20,19 +20,20 @@ class RoadLinesPublisher:
     def publish_path(self, point_array_left, point_array_right, frame_id):
         self.frame_id = frame_id
 
-        path_array = []
+        msg = RoadLinesMsg()
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = self.frame_id
 
         for i in range(len(point_array_left)):
             points_left = point_array_left[i]
             points_right = point_array_right[i]
             # Initialize the Path message
             def create_path(points):
-                path= Path()
+                path = Path()
                 path.header.stamp = rospy.Time.now()
                 path.header.frame_id = self.frame_id
 
                 # Compute yaw angles and build poses
-                poses_left = []
                 for i in range(2, len(points) - 1):
                     current_point = points[i]
                     next_point = points[i + 1]
@@ -52,15 +53,14 @@ class RoadLinesPublisher:
                     pose_stamped.pose.orientation.z = quaternion[2]
                     pose_stamped.pose.orientation.w = quaternion[3]
 
-                    poses_left.append(pose_stamped)
+                    path.poses.append(pose_stamped)
 
-                path.poses = poses_left # Assign all poses at once for efficiency
                 return path
-            path_array.append([create_path(points_left), create_path(points_right)])
 
-        msg = RoadLinesMsg()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = self.frame_id
-        msg.paths = path_array
+            road_line = RoadLine()
+            road_line.left_path = create_path(points_left)
+            road_line.right_path = create_path(points_right)
+
+            msg.paths.append(road_line)
 
         self.publisher.publish(msg)

@@ -232,7 +232,7 @@ def remove_edge_points(mask, box, depth_image, left_points, right_points, intrin
     filtered_right_points = filter_points_by_distance(right_points, right_threshold)
 
     # Debug prints to help trace the computation
-    print(
+    '''print(
         "LEFT: U: {}, V: {}, DEPTH: {:.3f}, DIST 2D: {:.3f}, POINTS MIN: {:.3f}, POINTS COUNT: {} -> {}"
         .format(
             left_col,
@@ -255,6 +255,6 @@ def remove_edge_points(mask, box, depth_image, left_points, right_points, intrin
             len(right_points),
             len(filtered_right_points),
         )
-    )
+    )'''
 
     return filtered_left_points, filtered_right_points

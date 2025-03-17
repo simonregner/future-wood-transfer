@@ -1,17 +1,41 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>road_lines_msg</name>
-  <version>0.0.1</version>
+  <version>0.0.0</version>
   <description>The road_lines_msg package</description>
-  <maintainer email="your_email@example.com">Your Name</maintainer>
-  <license>BSD</license>
+
+  <maintainer email="jakob@todo.todo">jakob</maintainer>
+
+  <license>TODO</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <depend>roscpp</depend>
-  <depend>rospy</depend>
-  <depend>std_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>message_generation</depend>
   <depend>message_runtime</depend>
+
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  
+  <build_export_depend>message_generation</build_export_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>rospy</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <build_export_depend>nav_msgs</build_export_depend>
+  
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+
+  </export>
 </package>

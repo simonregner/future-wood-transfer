@@ -1,6 +1,11 @@
+import sys
+sys.path.append("../..")
+
 import numpy as np
 import open3d as o3d
 import cv2
+
+from detection.pointcloud.create_pointcloud import create_pointcloud
 
 
 
@@ -105,23 +110,6 @@ def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
     depth_filtered = np.full(depth_image.shape, np.nan, dtype=np.float32)
     depth_filtered[valid_mask] = depth_image[valid_mask]
 
-    # Convert the filtered depth image to an Open3D Image
-    depth_o3d = o3d.geometry.Image(depth_filtered)
-
-    # Set up Open3D camera intrinsics
-    pinhole_camera_intrinsic = o3d.camera.PinholeCameraIntrinsic()
-    pinhole_camera_intrinsic.set_intrinsics(
-        width=depth_image.shape[1],
-        height=depth_image.shape[0],
-        fx=intrinsic_matrix[0, 0],
-        fy=intrinsic_matrix[1, 1],
-        cx=intrinsic_matrix[0, 2],
-        cy=intrinsic_matrix[1, 2]
-    )
-
     # Create and return the point cloud from the depth image
-    return o3d.geometry.PointCloud.create_from_depth_image(
-        depth_o3d,
-        pinhole_camera_intrinsic
-    )
+    return create_pointcloud(depth_image=depth_filtered, intrinsic_matrix=intrinsic_matrix)
 

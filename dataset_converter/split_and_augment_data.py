@@ -20,6 +20,7 @@ input_folders = [
     '/home/simon/Documents/Master-Thesis/data/yolo_label_studio/Road_Detection_Asphalt/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_label_studio/ROSBAG_INTERSECTION/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_label_studio/Intersections/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_label_studio/Google_Maps/images',
 ]
 
 # Define special folder and its labels folder (adjust paths as needed)
@@ -116,51 +117,50 @@ def jitter_colors(image):
     hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1] * random.uniform(0.5, 1.7), 0, 255)
     return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
-
 # New function to flip image and update labels (including flipping polygons)
+def clamp(value, min_value=0.0, max_value=1.0):
+    return max(min_value, min(max_value, value))
+
 def flip_image_and_update_labels(image, label_path, output_image_path, output_label_path):
-    # Flip the image horizontally
     flipped_image = cv2.flip(image, 1)
     cv2.imwrite(output_image_path, flipped_image)
 
-    # Process label file if it exists
     if os.path.exists(label_path):
         with open(label_path, 'r') as file:
             lines = file.readlines()
-        flipped_labels = []
+
+        flipped_annotations = []
         for line in lines:
             parts = line.strip().split()
-            if len(parts) < 5:
-                continue  # Skip malformed lines
-            cls, x_center, y_center, w, h = parts[:5]
-            # Swap classes 2 and 3 if needed
-            if cls == '2':
-                cls = '3'
-            elif cls == '3':
-                cls = '2'
-            new_x_center = 1.0 - float(x_center)
-            # Check if there are polygon coordinates following the bounding box
-            if len(parts) > 5:
-                poly_coords = parts[5:]
-                flipped_poly = []
-                # Process polygon coordinates in pairs (x, y)
-                for i, coord in enumerate(poly_coords):
-                    # Even index: x coordinate -> flip it; odd index: y coordinate remains
-                    if i % 2 == 0:
-                        flipped_coord = 1.0 - float(coord)
-                        flipped_poly.append(f"{flipped_coord:.6f}")
-                    else:
-                        flipped_poly.append(coord)
-                new_line = f"{cls} {new_x_center:.6f} {y_center} {w} {h} " + " ".join(flipped_poly) + "\n"
-            else:
-                new_line = f"{cls} {new_x_center:.6f} {y_center} {w} {h}\n"
-            flipped_labels.append(new_line)
-        with open(output_label_path, 'w') as file:
-            file.writelines(flipped_labels)
-    else:
-        # Create an empty label file if original does not exist
-        open(output_label_path, 'w').close()
+            if len(parts) < 3 or len(parts[1:]) % 2 != 0:
+                print(f"Malformed annotation skipped: {line.strip()}")
+                continue
 
+            cls = parts[0]
+
+            # Swap class indices 2 and 3 if needed
+            cls = '3' if cls == '2' else '2' if cls == '3' else cls
+
+            coords = [float(coord) for coord in parts[1:]]
+            flipped_coords = []
+
+            for i in range(0, len(coords), 2):
+                orig_x = coords[i]
+                orig_y = coords[i + 1]
+
+                # Flip x coordinate
+                flipped_x = clamp(1.0 - orig_x)
+                flipped_y = clamp(orig_y)  # y stays same
+
+                flipped_coords.extend([f"{flipped_x:.6f}", f"{flipped_y:.6f}"])
+
+            new_line = f"{cls} " + " ".join(flipped_coords) + "\n"
+            flipped_annotations.append(new_line)
+
+        with open(output_label_path, 'w') as file:
+            file.writelines(flipped_annotations)
+    else:
+        open(output_label_path, 'w').close()
 
 # Mapping augmentation names to functions.
 # For flip, we now call our custom function.

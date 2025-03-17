@@ -15,7 +15,7 @@ class MaskPublisher:
 
         self.frame_id = None
 
-    def publish_mask(self, image, results, frame_id):
+    def publish_yolo_mask(self, image, results, frame_id, yolo_mask = True):
         """
         Publish an image with overlayed masks.
 
@@ -37,26 +37,33 @@ class MaskPublisher:
         mask_overlay = np.zeros_like(image, dtype=np.uint8)
 
         # Extract masks and process in batches
-        masks = results[0].masks.data.cpu().numpy().astype(np.uint8)  # Convert all masks at once
+        if yolo_mask:
+            masks = results[0].masks.data.cpu().numpy().astype(np.uint8)  # Convert all masks at once
+        else:
+            masks = results
+
         masks_resized = np.stack([
             cv2.resize(mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
             for mask in masks
         ], axis=0)
 
         # Generate a fixed color (can use random or unique colors if needed)
-        color = np.array([255, 0, 0], dtype=np.uint8)
+        color = [[0, 0, 255], [0, 255, 0], [255, 0, 0], [0, 255, 255], [255, 255, 0], [255, 0, 255], [255, 255, 255]]
 
         # Overlay all masks in a vectorized manner
-        for scaled_mask in masks_resized:
-            mask_colored = (scaled_mask[..., None] * color).astype(np.uint8)  # Broadcast color
-            mask_overlay = cv2.addWeighted(mask_overlay, 1.0, mask_colored, 0.5, 0)
+        for i, scaled_mask in enumerate(masks_resized):
+            color_overlay = np.zeros_like(image)
+            color_overlay[scaled_mask > 0] = color[i]
+            mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 0.5, 0)
 
         # Combine the overlay with the original image
         result_image = cv2.addWeighted(image, 1.0, mask_overlay, 0.75, 0)
 
         # Convert to ROS message
-        image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
-        image_msg = self.bridge.cv2_to_imgmsg(results[0].plot())
+        if yolo_mask:
+            image_msg = self.bridge.cv2_to_imgmsg(results[0].plot())
+        else:
+            image_msg = self.bridge.cv2_to_imgmsg(result_image, encoding="bgr8")
         image_msg.header = Header()
         image_msg.header.stamp = rospy.Time.now()
 

@@ -7,18 +7,23 @@ from message_filters import Subscriber, TimeSynchronizer
 
 from cv_bridge import CvBridge
 
+import cv2
+
 import numpy as np
 
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection, edge_detection_2d, remove_edge_points
+from detection.pointcloud.pointcloud_edge_detection import edge_detection_2d, remove_edge_points
 from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
+#from detection.pointcloud.create_pointcloud import create_pointcloud
+#from detection.pointcloud.pointcloud_transformation import pointcloud_transformation
 
 import detection.ros_tools.publisher.ros_path_publisher as ros_path_publisher
 import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
 import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_publisher
 import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
-from detection.tools.mask import  keep_largest_component, get_mask_edge_distance
+
+from detection.tools.mask import  keep_largest_component
 
 from scipy.spatial.transform import Rotation as R
 
@@ -26,9 +31,9 @@ import time
 
 from scipy.signal import savgol_filter
 
-import matplotlib.pyplot as plt
+import scipy.ndimage as nd
 
-from skimage.restoration import inpaint_biharmonic
+from sklearn.neighbors import LocalOutlierFactor
 
 
 
@@ -50,6 +55,10 @@ class TimeSyncListener:
         # Dynamically check and assign the appropriate topic for image_sub
         self.rgb_image_type = None
         self.image_sub = None
+
+        self.pointcloud_previous= None
+
+        self.max_depth = 20
 
         # Set timer for pause
         # TODO: Change for not static
@@ -191,8 +200,17 @@ class TimeSyncListener:
             return
 
         # Process depth image: replace NaNs with zeros and clip to valid range
-        depth_image = np.nan_to_num(depth_image, nan=0.0)
-        depth_image = np.clip(depth_image, 0.5, 13)
+        #depth_image = np.nan_to_num(depth_image, nan=0.0)
+        #depth_image = np.clip(depth_image, 0.5, self.max_depth)
+        #depth_image[depth_image < 0.5] = np.nan
+        #depth_image[depth_image > 20] = np.nan
+
+        #print("DEPTH SHAPE: ", depth_image.shape)
+        #print("IMAGE SHAPE: ", rgb_image.shape)
+
+        nan_mask = np.isnan(depth_image)
+        _, indices = nd.distance_transform_edt(nan_mask, return_distances=True, return_indices=True)
+        depth_image = depth_image[tuple(indices)]
 
         # If depth and RGB dimensions differ, attempt a reshape (this is a no-op if dimensions already match)
         if rgb_image.shape[0] != depth_image.shape[0] or rgb_image.shape[1] != depth_image.shape[1]:
@@ -203,18 +221,46 @@ class TimeSyncListener:
 
         # If no predictions are found, publish the mask and exit early
         if not results[0].boxes:
-            self.mask_image_publisher.publish_mask(rgb_image, None, frame_id)
+            self.mask_image_publisher.publish_yolo_mask(rgb_image, None, frame_id)
             return
 
+        '''
+        if self.pointcloud_previous == None:
+            self.pointcloud_previous = create_pointcloud(depth_image=depth_image, intrinsic_matrix=self.intrinsic_matrix)
+        else:
+            pointcloud_current = create_pointcloud(depth_image=depth_image, intrinsic_matrix=self.intrinsic_matrix)
+            pointcloud_transformation(pointcloud_current, self.pointcloud_previous)
+        '''
         left_paths = []
         right_paths = []
         boxes = results[0].boxes.xyxy
+
+        masks = []
 
         # Process each mask in the prediction results
         for i, mask_data in enumerate(results[0].masks.data):
             # Process mask: convert to uint8 and keep the largest connected component
             mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
             mask = keep_largest_component(mask)
+
+            #contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            #epsilon = 0.01 * cv2.arcLength(contours[0], True)
+            #approx = cv2.approxPolyDP(contours[0], epsilon, True)
+            #smooth_mask = np.zeros_like(mask)
+            #cv2.drawContours(smooth_mask, [approx], -1, 255, thickness=cv2.FILLED)
+            #mask = smooth_mask
+
+            # Define a larger kernel (adjust size as needed)
+            kernel_size = 10  # Increase size to remove larger bulges
+            kernel = np.ones((kernel_size, kernel_size), np.uint8)
+
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+            #kernel_size = 5
+            #kernel = np.ones((kernel_size, kernel_size), np.uint8)
+            #mask = cv2.morphologyEx(mask, cv2.MORPH_GRADIENT, kernel)
+
+            masks.append(mask)
 
             # Convert depth to point cloud from the mask
             point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
@@ -243,6 +289,7 @@ class TimeSyncListener:
                 # Return 3D points with y set to zero (or replaced by any other value if needed)
                 return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
 
+
             points_fine_l = smooth_points(filtered_left_points[:, [0, 2]], poly_order=2)
             points_fine_r = smooth_points(filtered_right_points[:, [0, 2]], poly_order=2)
 
@@ -262,9 +309,9 @@ class TimeSyncListener:
             self.right_path_publisher_2.publish_path([], frame_id)
 
         self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id)
-        self.mask_image_publisher.publish_mask(rgb_image, results, frame_id)
+        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, frame_id, yolo_mask=False)
 
-        if False:
+        if True:
             #points_3d_left = np.hstack((filtered_left_points[:, [0]], np.zeros((filtered_left_points.shape[0], 1)), filtered_left_points[:, [1]]))
             #points_3d_right = np.hstack((filtered_right_points[:, [0]], np.zeros((filtered_right_points.shape[0], 1)), filtered_right_points[:, [1]]))
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import rospy
-from road_line_msg.msg import RoadLinesMsg
+from road_lines_msg.msg import RoadLinesMsg
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 
