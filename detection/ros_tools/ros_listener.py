@@ -14,8 +14,6 @@ import numpy as np
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
 from detection.pointcloud.pointcloud_edge_detection import edge_detection_2d, remove_edge_points
 from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
-#from detection.pointcloud.create_pointcloud import create_pointcloud
-#from detection.pointcloud.pointcloud_transformation import pointcloud_transformation
 
 import detection.ros_tools.publisher.ros_path_publisher as ros_path_publisher
 import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
@@ -23,7 +21,11 @@ import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_
 import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
 
-from detection.tools.mask import  keep_largest_component
+from detection.tools.mask import  keep_largest_component, create_side_masks_from_mask
+
+import detection.tools.skeleton as skeleton
+import detection.tools.contour as contour
+
 
 from scipy.spatial.transform import Rotation as R
 
@@ -131,6 +133,8 @@ class TimeSyncListener:
             if message_type == CameraInfo:
                 self.intrinsic_matrix = np.array(msg.K).reshape(3, 3)
 
+                print("Camera Distortion: ", msg.D)
+
 
                 print(self.intrinsic_matrix)
                 print(msg)
@@ -224,6 +228,7 @@ class TimeSyncListener:
             self.mask_image_publisher.publish_yolo_mask(rgb_image, None, frame_id)
             return
 
+
         '''
         if self.pointcloud_previous == None:
             self.pointcloud_previous = create_pointcloud(depth_image=depth_image, intrinsic_matrix=self.intrinsic_matrix)
@@ -253,14 +258,23 @@ class TimeSyncListener:
             # Define a larger kernel (adjust size as needed)
             kernel_size = 10  # Increase size to remove larger bulges
             kernel = np.ones((kernel_size, kernel_size), np.uint8)
+            #mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            #mask_left, mask_right = create_side_masks_from_mask(mask, width=10)
+
+            #masks.append(np.logical_or(mask_left, mask_right))
+
+            #points_left_mask = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask_left)
+            #points_right_mask = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask_right)
+
 
             #kernel_size = 5
             #kernel = np.ones((kernel_size, kernel_size), np.uint8)
             #mask = cv2.morphologyEx(mask, cv2.MORPH_GRADIENT, kernel)
 
             masks.append(mask)
+
+            continue
 
             # Convert depth to point cloud from the mask
             point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
@@ -271,6 +285,8 @@ class TimeSyncListener:
                 points_3D=np.asarray(point_cloud.points),
                 points_2D=points_2d
             )
+
+
 
             # Filter edge points using the provided function
             filtered_left_points, filtered_right_points = remove_edge_points(
@@ -295,6 +311,9 @@ class TimeSyncListener:
 
             left_paths.append(points_fine_l)
             right_paths.append(points_fine_r)
+
+        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, frame_id, yolo_mask=False)
+        return
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)

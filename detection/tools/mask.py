@@ -1,5 +1,14 @@
+import sys
+sys.path.append("..")
+
 import cv2
 import numpy as np
+
+import detection.tools.skeleton as sk
+
+from scipy.spatial import KDTree
+import networkx as nx
+
 
 def remove_inner_part(mask):
     # Define the kernel size for erosion (5 pixels)
@@ -132,4 +141,154 @@ def get_mask_edge_distance(mask):
         right_row_index = None
 
     return left_row_index, right_row_index
+
+
+'''def process_mask_to_left_right_masks(mask, width=10):
+    # Step 1: Extract largest contour
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contour = max(contours, key=cv2.contourArea)
+
+    # Step 2: Skeletonize and find main skeleton
+    skeleton = sk.get_skeleton(mask)
+    graph = sk.skeleton_to_graph(skeleton)
+    centerline = sk.longest_path_in_graph(graph)
+
+    # Step 3: Compute normals
+    normals = sk.get_normals(centerline)
+
+    # Step 3: Create left/right masks of specified width
+    mask_left, mask_right = create_side_masks(mask.shape, centerline, normals, width)
+
+    return mask_left, mask_right, contour, centerline
+    '''
+
+def get_bottom_center_point(mask, box_value):
+    y_max = box_value[3]
+    ### STEP 1: Find the actual bottom-center of the road using the mask ###
+    bottom_y = int(y_max)  # Start from the height of the mask
+    while bottom_y > 0 and np.sum(mask[bottom_y, :] == 255) == 0:
+        bottom_y -= 1  # Move upwards until we find road pixels
+
+    # Get all 255-pixels at this bottom line
+    bottom_x_indices = np.where(mask[bottom_y, :] == 255)[0]
+
+    if len(bottom_x_indices) == 0:
+        raise ValueError("No road pixels (255) found at the detected mask bottom.")
+
+    # Compute center-bottom of road from 255-pixel values
+    bottom_center_x = int(np.mean(bottom_x_indices))
+    return np.array([bottom_y, bottom_center_x], dtype=int)
+
+def create_side_masks_from_mask(mask, box_values, width=10):
+    # Skeletonize and find main centerline
+
+
+    skeleton = sk.get_skeleton(mask)
+    graph = sk.skeleton_to_graph(skeleton)
+
+    #graph = sk.remove_bottom_corner_nodes(graph, mask)
+    '''
+    car_point = get_bottom_center_point(mask, box_values)
+
+    nearest_node_idx, nearest_node = sk.get_nearest_node(graph, car_point)
+    graph = sk.remove_nearest_nodes_ends(graph, nearest_node)
+
+
+    graph, start_node_idx = sk.add_start_node(graph, car_point, nearest_node_idx)
+
+    longest_path_nodes = sk.find_longest_path_from_start(graph, start_node_idx)
+
+    # Extract the edges that belong to the longest path
+    longest_path_edges = [(longest_path_nodes[i], longest_path_nodes[i + 1]) for i in
+                          range(len(longest_path_nodes) - 1)]
+
+    ### STEP 4: Create a new graph containing only the longest path ###
+    longest_graph = nx.Graph()
+    for node in longest_path_nodes:
+        longest_graph.add_node(node, o=graph.nodes[node]['o'])
+
+    for edge in longest_path_edges:
+        s, e = edge
+        longest_graph.add_edge(s, e, weight=graph[s][e]['weight'], pts=graph[s][e]['pts'])
+
+    graph = sk.extend_path(graph, mask, longest_path_nodes)
+    '''
+
+    '''normals = sk.get_normals(longest_path_nodes)
+
+    print(longest_path_nodes)
+
+    # Create KDTree for efficient nearest-centerline lookup
+    tree = KDTree(longest_path_nodes)
+
+    # Find all road pixels in mask
+    road_pixels = np.column_stack(np.where(mask > 0))
+    road_pixels_xy = road_pixels[:, ::-1]  # (y,x) -> (x,y)
+
+    # Find nearest points on centerline
+    distances, indices = tree.query(road_pixels_xy)
+    nearest_center_pts = longest_path_nodes[indices]
+
+    # Compute vectors from centerline to road pixels
+    vectors = road_pixels_xy - nearest_center_pts
+
+    # Compute side classification
+    sides = np.einsum('ij,ij->i', vectors, normals[indices])
+'''
+    mask_left = np.zeros_like(mask, dtype=np.uint8)
+    mask_right = np.zeros_like(mask, dtype=np.uint8)
+
+    '''for i, (y, x) in enumerate(road_pixels):
+        dist_to_edge = np.linalg.norm(road_pixels_xy[i] - longest_path_nodes[indices[i]])
+        if dist_to_edge <= width:
+            if sides[i] > 0:
+                mask_left[y, x] = 255
+            else:
+                mask_right[y, x] = 255
+'''
+    return mask_left, mask_right, graph #sk.longest_graph(graph, start_node_idx)
+
+def reduce_mask_width(mask, bbox):
+    # Set threshold values
+    max_width_n = 800  # Maximum allowed road width at the bottom
+    reduce_height_y = 300  # Height in pixels where width reduction applies
+
+    ### STEP 1: Set bottom_y from Bounding Box ###
+    bottom_y = int(bbox[3])  # Ensure bottom_y is an integer
+
+    # Find leftmost and rightmost pixels of the road at bottom_y
+    if 0 <= bottom_y < mask.shape[0]:  # Ensure `bottom_y` is within valid range
+        road_pixels = np.where(mask[bottom_y, :] == 255)[0]
+        if len(road_pixels) > 0:
+            left_edge = road_pixels[0]
+            right_edge = road_pixels[-1]
+            road_width = right_edge - left_edge
+        else:
+            raise ValueError(f"No road pixels found at bottom_y ({bottom_y}).")
+    else:
+        raise ValueError(f"bottom_y ({bottom_y}) is out of bounds for mask height {mask.shape[0]}.")
+
+    ### STEP 2: Reduce Width from Left & Right Edges (Preserve Center) ###
+    if road_width > max_width_n:
+        print(f"Road width at bottom ({road_width}px) is wider than {max_width_n}px. Reducing edges...")
+
+        # Define region for reduction (only reduce the bottom `y` pixels)
+        bottom_mask = mask[max(0, bottom_y - reduce_height_y):bottom_y + 1, :].copy()
+
+        # Calculate how much to reduce from both sides
+        excess_width = road_width - max_width_n
+        pixels_to_remove_per_side = excess_width // 2  # Reduce equally from both sides
+
+        # Remove pixels from left and right edges while preserving the center
+        for y in range(bottom_mask.shape[0]):
+            left_limit = max(0, left_edge + pixels_to_remove_per_side)
+            right_limit = min(mask.shape[1], right_edge - pixels_to_remove_per_side)
+            bottom_mask[y, :left_limit] = 0  # Remove from left
+            bottom_mask[y, right_limit:] = 0  # Remove from right
+
+        # Merge back into the original mask
+        mask[max(0, bottom_y - reduce_height_y):bottom_y + 1, :] = bottom_mask
+
+    return mask
+
 
