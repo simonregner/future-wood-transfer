@@ -203,15 +203,6 @@ class TimeSyncListener:
             rospy.logwarn(f"Error converting depth image: {e}")
             return
 
-        # Process depth image: replace NaNs with zeros and clip to valid range
-        #depth_image = np.nan_to_num(depth_image, nan=0.0)
-        #depth_image = np.clip(depth_image, 0.5, self.max_depth)
-        #depth_image[depth_image < 0.5] = np.nan
-        #depth_image[depth_image > 20] = np.nan
-
-        #print("DEPTH SHAPE: ", depth_image.shape)
-        #print("IMAGE SHAPE: ", rgb_image.shape)
-
         nan_mask = np.isnan(depth_image)
         _, indices = nd.distance_transform_edt(nan_mask, return_distances=True, return_indices=True)
         depth_image = depth_image[tuple(indices)]
@@ -256,25 +247,11 @@ class TimeSyncListener:
             #mask = smooth_mask
 
             # Define a larger kernel (adjust size as needed)
-            kernel_size = 10  # Increase size to remove larger bulges
-            kernel = np.ones((kernel_size, kernel_size), np.uint8)
+            #kernel_size = 10  # Increase size to remove larger bulges
+            #kernel = np.ones((kernel_size, kernel_size), np.uint8)
             #mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-            #mask_left, mask_right = create_side_masks_from_mask(mask, width=10)
-
-            #masks.append(np.logical_or(mask_left, mask_right))
-
-            #points_left_mask = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask_left)
-            #points_right_mask = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask_right)
-
-
-            #kernel_size = 5
-            #kernel = np.ones((kernel_size, kernel_size), np.uint8)
-            #mask = cv2.morphologyEx(mask, cv2.MORPH_GRADIENT, kernel)
-
             masks.append(mask)
-
-            continue
 
             # Convert depth to point cloud from the mask
             point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
@@ -285,8 +262,6 @@ class TimeSyncListener:
                 points_3D=np.asarray(point_cloud.points),
                 points_2D=points_2d
             )
-
-
 
             # Filter edge points using the provided function
             filtered_left_points, filtered_right_points = remove_edge_points(
@@ -311,9 +286,6 @@ class TimeSyncListener:
 
             left_paths.append(points_fine_l)
             right_paths.append(points_fine_r)
-
-        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, frame_id, yolo_mask=False)
-        return
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)
