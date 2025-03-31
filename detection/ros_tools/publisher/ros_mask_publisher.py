@@ -15,7 +15,7 @@ class MaskPublisher:
 
         self.frame_id = None
 
-    def publish_yolo_mask(self, image, results, frame_id, yolo_mask = True):
+    def publish_yolo_mask(self, image, results, path_pairs, frame_id, yolo_mask = True):
         """
         Publish an image with overlayed masks.
 
@@ -47,14 +47,23 @@ class MaskPublisher:
             for mask in masks
         ], axis=0)
 
+
         # Generate a fixed color (can use random or unique colors if needed)
         color = [[0, 0, 255], [0, 255, 0], [255, 0, 0], [0, 255, 255], [255, 255, 0], [255, 0, 255], [255, 255, 255]]
 
         # Overlay all masks in a vectorized manner
-        for i, scaled_mask in enumerate(masks_resized):
-            color_overlay = np.zeros_like(image)
-            color_overlay[scaled_mask > 0] = color[i]
-            mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 0.5, 0)
+        #for i, scaled_mask in enumerate(masks_resized):
+        #    color_overlay = np.zeros_like(image)
+        #    color_overlay[scaled_mask > 0] = color[i]
+        #    mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 0.5, 0)
+
+        for i, pair in enumerate(path_pairs):
+            for idx in pair:
+                if idx is None:
+                    continue
+                color_overlay = np.zeros_like(image)
+                color_overlay[masks_resized[idx] > 0] = color[i]
+                mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 0.5, 0)
 
         # Combine the overlay with the original image
         result_image = cv2.addWeighted(image, 1.0, mask_overlay, 0.75, 0)

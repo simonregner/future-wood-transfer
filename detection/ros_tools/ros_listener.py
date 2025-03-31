@@ -12,8 +12,6 @@ import cv2
 import numpy as np
 
 from detection.pointcloud.depth_to_pointcloud import depth_to_pointcloud_from_mask
-from detection.pointcloud.pointcloud_edge_detection import edge_detection_2d, remove_edge_points
-from detection.pointcloud.pointcloud_converter import pointcloud_to_2d
 
 import detection.ros_tools.publisher.ros_path_publisher as ros_path_publisher
 import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
@@ -21,21 +19,16 @@ import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_
 import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
 
-from detection.tools.mask import  keep_largest_component, create_side_masks_from_mask
-
-import detection.tools.skeleton as skeleton
-import detection.tools.contour as contour
-
+from detection.tools.mask import  keep_largest_component
+from detection.tools.line_indentification import find_left_to_right_pairs
 
 from scipy.spatial.transform import Rotation as R
 
 import time
-
-from scipy.signal import savgol_filter
-
 import scipy.ndimage as nd
 
-from sklearn.neighbors import LocalOutlierFactor
+from sklearn.decomposition import PCA
+
 
 
 
@@ -146,6 +139,17 @@ class TimeSyncListener:
         rotation = R.from_quat([q.x, q.y, q.z, q.w])
         return rotation.as_euler('xyz', degrees=False)
 
+    def ensure_first_point_closest_to_origin(self, points):
+        points = list(points)  # in case it's a numpy array or tuple
+        first = np.array(points[0])
+        last = np.array(points[-1])
+        origin = np.array([0, 0, 0])
+
+        if np.linalg.norm(last - origin) < np.linalg.norm(first - origin):
+            print("FLIP POINTS")
+            return points[::-1]  # reversed
+        return points
+
     def callback(self, image_msg, depth_msg):
         """
         Callback function that handles synchronized RGB and depth messages.
@@ -216,76 +220,58 @@ class TimeSyncListener:
 
         # If no predictions are found, publish the mask and exit early
         if not results[0].boxes:
-            self.mask_image_publisher.publish_yolo_mask(rgb_image, None, frame_id)
+            self.mask_image_publisher.publish_yolo_mask(rgb_image, None, None, frame_id)
             return
 
 
-        '''
-        if self.pointcloud_previous == None:
-            self.pointcloud_previous = create_pointcloud(depth_image=depth_image, intrinsic_matrix=self.intrinsic_matrix)
-        else:
-            pointcloud_current = create_pointcloud(depth_image=depth_image, intrinsic_matrix=self.intrinsic_matrix)
-            pointcloud_transformation(pointcloud_current, self.pointcloud_previous)
-        '''
-        left_paths = []
-        right_paths = []
-        boxes = results[0].boxes.xyxy
-
+        paths = []
         masks = []
 
-        # Process each mask in the prediction results
+        kernel = np.ones((0, 0), np.uint8)
+        degree = 4  # Moved out of loop
+
+        # Precompute t_fit
+        t_fit_len = 100
+
         for i, mask_data in enumerate(results[0].masks.data):
-            # Process mask: convert to uint8 and keep the largest connected component
+            # Convert mask to uint8 and extract largest component
             mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
             mask = keep_largest_component(mask)
-
-            #contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            #epsilon = 0.01 * cv2.arcLength(contours[0], True)
-            #approx = cv2.approxPolyDP(contours[0], epsilon, True)
-            #smooth_mask = np.zeros_like(mask)
-            #cv2.drawContours(smooth_mask, [approx], -1, 255, thickness=cv2.FILLED)
-            #mask = smooth_mask
-
-            # Define a larger kernel (adjust size as needed)
-            #kernel_size = 10  # Increase size to remove larger bulges
-            #kernel = np.ones((kernel_size, kernel_size), np.uint8)
-            #mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-
+            mask = cv2.erode(mask, kernel, iterations=1)
             masks.append(mask)
 
-            # Convert depth to point cloud from the mask
+            # Get point cloud and filter NaNs
             point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
+            points = np.asarray(point_cloud.points)
+            if points.size == 0:
+                continue  # skip empty point clouds
 
-            # 2D edge detection
-            points_2d = pointcloud_to_2d(point_cloud)
-            left_points, right_points = edge_detection_2d(
-                points_3D=np.asarray(point_cloud.points),
-                points_2D=points_2d
-            )
+            points = points[~np.isnan(points).any(axis=1)]
+            if len(points) < degree + 1:
+                continue  # Not enough points to fit polynomial
 
-            # Filter edge points using the provided function
-            filtered_left_points, filtered_right_points = remove_edge_points(
-                mask, boxes[i], depth_image, left_points, right_points, self.intrinsic_matrix
-            )
+            # PCA to sort points
+            t = PCA(n_components=1).fit_transform(points).flatten()
+            sorted_idx = np.argsort(t)
+            points_sorted = points[sorted_idx]
+            t_sorted = t[sorted_idx]
 
-            # Validate that sufficient edge points exist
-            if len(filtered_left_points) <= 2 or len(filtered_right_points) <= 2:
-                return
+            # Fit and evaluate polynomial
+            t_fit = np.linspace(t_sorted[0], t_sorted[-1], t_fit_len)
+            x_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 0], degree), t_fit)
+            y_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 1], degree), t_fit)
+            z_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 2], degree), t_fit)
 
-            # Smooth left and right edge points using Savitzky–Golay filter
-            def smooth_points(points, poly_order=2):
-                x, y = points[:, 0], points[:, 1]
-                x_smooth = savgol_filter(x, len(x), poly_order)
-                y_smooth = savgol_filter(y, len(y), poly_order)
-                # Return 3D points with y set to zero (or replaced by any other value if needed)
-                return np.column_stack((x_smooth, np.zeros_like(x_smooth), y_smooth))
+            points_line = self.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
+            paths.append(points_line)
 
 
-            points_fine_l = smooth_points(filtered_left_points[:, [0, 2]], poly_order=2)
-            points_fine_r = smooth_points(filtered_right_points[:, [0, 2]], poly_order=2)
+        path_pairs = find_left_to_right_pairs(paths)
 
-            left_paths.append(points_fine_l)
-            right_paths.append(points_fine_r)
+        paths_np = np.asarray(paths)
+
+        left_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
+        right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)
@@ -300,13 +286,9 @@ class TimeSyncListener:
             self.right_path_publisher_2.publish_path([], frame_id)
 
         self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id)
-        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, frame_id, yolo_mask=False)
+        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, path_pairs, frame_id, yolo_mask=False)
 
-        if True:
-            #points_3d_left = np.hstack((filtered_left_points[:, [0]], np.zeros((filtered_left_points.shape[0], 1)), filtered_left_points[:, [1]]))
-            #points_3d_right = np.hstack((filtered_right_points[:, [0]], np.zeros((filtered_right_points.shape[0], 1)), filtered_right_points[:, [1]]))
-
-            self.point_cloud_publisher.publish_pointcloud(point_cloud.points, filtered_right_points, filtered_left_points, frame_id)
+        #self.point_cloud_publisher.publish_pointcloud([], filtered_right_points, filtered_left_points, frame_id)
 
         end_time = time.time()
 

@@ -33,6 +33,9 @@ class RoadLinesPublisher:
                 path.header.stamp = rospy.Time.now()
                 path.header.frame_id = self.frame_id
 
+                if len(points) == 0:
+                    return path
+
                 # Compute yaw angles and build poses
                 for i in range(2, len(points) - 1):
                     current_point = points[i]
@@ -47,7 +50,7 @@ class RoadLinesPublisher:
                     pose_stamped.header.frame_id = self.frame_id
                     pose_stamped.pose.position.x = current_point[0]
                     pose_stamped.pose.position.y = current_point[1]
-                    pose_stamped.pose.position.z = current_point[2] if current_point.shape[0] > 2 else 0.0
+                    pose_stamped.pose.position.z = current_point[2] if len(current_point) > 2 else 0.0
                     pose_stamped.pose.orientation.x = quaternion[0]
                     pose_stamped.pose.orientation.y = quaternion[1]
                     pose_stamped.pose.orientation.z = quaternion[2]
