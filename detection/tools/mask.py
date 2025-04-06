@@ -6,8 +6,7 @@ import numpy as np
 
 import detection.tools.skeleton as sk
 
-from scipy.spatial import KDTree
-import networkx as nx
+from scipy.ndimage import label, find_objects
 
 
 def remove_inner_part(mask):
@@ -23,30 +22,29 @@ def remove_inner_part(mask):
 
     return boundary
 
-def keep_largest_component(mask):
+def remove_smaller_parts(mask, min_size=10000):
     """
-    Keep only the largest connected component in a binary mask.
+    Removes connected regions in a binary mask that are smaller than `min_size`.
 
-    Parameters:
-        mask (numpy.ndarray): Input binary mask (0 and 255 values).
+    Args:
+        mask (np.ndarray): Binary mask (2D array).
+        min_size (int): Minimum allowed size of areas (in pixels).
 
     Returns:
-        numpy.ndarray: Binary mask with only the largest connected component.
+        np.ndarray: Filtered mask.
     """
-    # Ensure the mask is binary
-    binary_mask = (mask > 127).astype(np.uint8)
+    # Label connected regions
+    labeled_mask, num_features = label(mask)
 
-    # Find connected components and their stats
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+    # Create a new mask with only large enough regions
+    filtered_mask = np.zeros_like(mask)
 
-    if num_labels <= 1:  # Only background found
-        return np.zeros_like(mask, dtype=np.uint8)
+    for i in range(1, num_features + 1):
+        region = (labeled_mask == i)
+        if np.sum(region) >= min_size:
+            filtered_mask[region] = 1
 
-    # Find the largest component (excluding the background, which is label 0)
-    largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])  # Skip background label
-
-    # Directly generate the output mask
-    return (labels == largest_label).astype(np.uint8) * 255
+    return filtered_mask
 
 
 

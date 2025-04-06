@@ -34,12 +34,21 @@ class SinglePathPublisher:
 
         # Compute yaw angles and build poses
         poses = []
-        for i in range(2, len(points) - 1):
+        for i in range(len(points) - 1):
             current_point = points[i]
             next_point = points[i + 1]
-            dx, dy = next_point[0] - current_point[0], next_point[1] - current_point[1]
+            # current_point and next_point should be [x, y, z]
+            dx = next_point[0] - current_point[0]
+            dy = next_point[1] - current_point[1]
+            dz = next_point[2] - current_point[2]
+
+            # Compute yaw (rotation around z) and pitch (rotation around y)
             yaw = math.atan2(dy, dx)
-            quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
+            distance_xy = math.sqrt(dx ** 2 + dy ** 2)
+            pitch = math.atan2(-dz, distance_xy)  # Negative dz for typical ROS coordinate convention
+
+            # Convert to quaternion: (roll, pitch, yaw)
+            quaternion = tf.transformations.quaternion_from_euler(0, pitch, yaw)
 
             # Create PoseStamped message
             pose_stamped = PoseStamped()

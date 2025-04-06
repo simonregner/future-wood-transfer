@@ -102,7 +102,44 @@ def process_segmentation_file(txt_path):
 
     write_yolo_txt(txt_path, new_lines)
 
+def clean_dataset(root_folder):
+    for dirpath, _, filenames in os.walk(root_folder):
+        for filename in filenames:
+            if not filename.endswith(".txt") or filename == "classes.txt":
+                continue
+
+            txt_path = os.path.join(dirpath, filename)
+            txt_file = os.path.splitext(filename)[0]
+            img_dir = os.path.normpath(os.path.join(dirpath, "../images"))
+
+            image_found = False
+            for ext in [".jpg", ".jpeg", ".png"]:
+                image_path = os.path.join(img_dir, txt_file + ext)
+                if os.path.exists(image_path):
+                    image_found = True
+                    break
+
+            if not image_found:
+                # Remove the .txt if no image exists
+                print(f"🗑️ Removing {txt_path} (no image found)")
+                os.remove(txt_path)
+                continue
+
+            # Now check if .txt contains class 7
+            with open(txt_path, "r") as f:
+                lines = f.readlines()
+                contains_class_7 = any(line.strip().startswith("7 ") for line in lines)
+
+            if not contains_class_7:
+                print(f"🗑️ Removing {txt_path} and image (no class 7)")
+                os.remove(txt_path)
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+
 def process_all_txt_files(root_folder):
+
+    clean_dataset(root_folder)
+
     for dirpath, _, filenames in os.walk(root_folder):
         for filename in filenames:
             if filename.endswith(".txt") and filename != "classes.txt":

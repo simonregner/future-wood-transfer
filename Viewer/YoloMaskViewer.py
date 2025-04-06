@@ -75,6 +75,9 @@ class YOLOMaskEditor:
             for root_dir, _, files in os.walk(folder_path):
                 for file in files:
                     if file.endswith('.txt') and file != 'classes.txt':
+                        if file.startswith("._"):
+                            os.remove(os.path.join(root_dir, file))
+                            continue
                         self.txt_files.append(os.path.join(root_dir, file))
             self.txt_files.sort()
             if self.txt_files:
@@ -83,6 +86,7 @@ class YOLOMaskEditor:
 
     def load_segmentations(self):
         # Skip empty files
+        print(len(self.txt_files))
         while self.current_file_index < len(self.txt_files):
             with open(self.txt_files[self.current_file_index], 'r', encoding='utf-8', errors='ignore') as f:
                 if any(line.strip() for line in f):
@@ -94,9 +98,11 @@ class YOLOMaskEditor:
             return
         self.segments = []
         class_counts = [0] * 8  # 8 classes
-
+        print(self.txt_files[self.current_file_index])
         with open(self.txt_files[self.current_file_index], 'r', encoding='utf-8', errors='ignore') as file:
+            print("No Files")
             lines = file.readlines()
+            print(lines)
             self.segments = []
         for line in lines:
             if line.strip():

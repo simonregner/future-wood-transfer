@@ -19,7 +19,7 @@ import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_
 import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
 
-from detection.tools.mask import  keep_largest_component
+from detection.tools.mask import  remove_smaller_parts
 from detection.tools.line_indentification import find_left_to_right_pairs
 
 from scipy.spatial.transform import Rotation as R
@@ -29,8 +29,8 @@ import scipy.ndimage as nd
 
 from sklearn.decomposition import PCA
 
-
-
+from scipy.spatial import ConvexHull
+from itertools import combinations
 
 last_processed_time = rospy.Time()
 
@@ -139,16 +139,23 @@ class TimeSyncListener:
         rotation = R.from_quat([q.x, q.y, q.z, q.w])
         return rotation.as_euler('xyz', degrees=False)
 
-    def ensure_first_point_closest_to_origin(self, points):
+    def ensure_first_point_closest_to_origin(self, points) -> np.array:
         points = list(points)  # in case it's a numpy array or tuple
         first = np.array(points[0])
         last = np.array(points[-1])
         origin = np.array([0, 0, 0])
 
         if np.linalg.norm(last - origin) < np.linalg.norm(first - origin):
-            print("FLIP POINTS")
             return points[::-1]  # reversed
         return points
+
+    def pointscloud_distance(self, points, distance=10):
+        distances = np.linalg.norm(points, axis=1)
+
+        # Keep only points within distance 10
+        filtered_points = points[distances <= distance]
+
+        return filtered_points
 
     def callback(self, image_msg, depth_msg):
         """
@@ -186,6 +193,7 @@ class TimeSyncListener:
             return
 
         frame_id = image_msg.header.frame_id
+        time_stamp = image_msg.header.stamp
 
         # Convert RGB image
         try:
@@ -209,7 +217,7 @@ class TimeSyncListener:
 
         nan_mask = np.isnan(depth_image)
         _, indices = nd.distance_transform_edt(nan_mask, return_distances=True, return_indices=True)
-        depth_image = depth_image[tuple(indices)]
+        #depth_image = depth_image[tuple(indices)]
 
         # If depth and RGB dimensions differ, attempt a reshape (this is a no-op if dimensions already match)
         if rgb_image.shape[0] != depth_image.shape[0] or rgb_image.shape[1] != depth_image.shape[1]:
@@ -227,16 +235,19 @@ class TimeSyncListener:
         paths = []
         masks = []
 
-        kernel = np.ones((0, 0), np.uint8)
-        degree = 4  # Moved out of loop
+        kernel = np.ones((3, 3), np.uint8)
+        degree = 2  # Moved out of loop
 
         # Precompute t_fit
         t_fit_len = 100
 
         for i, mask_data in enumerate(results[0].masks.data):
+            if results[0].boxes.cls[i].cpu().numpy().astype(np.uint8) != 7:
+                continue
             # Convert mask to uint8 and extract largest component
             mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
-            mask = keep_largest_component(mask)
+            mask = remove_smaller_parts(mask, min_size=2000)
+
             mask = cv2.erode(mask, kernel, iterations=1)
             masks.append(mask)
 
@@ -246,9 +257,25 @@ class TimeSyncListener:
             if points.size == 0:
                 continue  # skip empty point clouds
 
+            points = self.pointscloud_distance(points, distance=20)
+
             points = points[~np.isnan(points).any(axis=1)]
             if len(points) < degree + 1:
                 continue  # Not enough points to fit polynomial
+
+            min_point = np.min(points, axis=0)
+            max_point = np.max(points, axis=0)
+            max_distance = np.linalg.norm(max_point - min_point)
+
+            if max_distance < 1:
+                rospy.logwarn(f"Remove Mask")
+                continue
+
+            if max_distance < 5:
+                rospy.logwarn(f"Max Distance < 5m: {max_distance}")
+                degree = 2
+            else:
+                degree = 3
 
             # PCA to sort points
             t = PCA(n_components=1).fit_transform(points).flatten()
@@ -259,19 +286,26 @@ class TimeSyncListener:
             # Fit and evaluate polynomial
             t_fit = np.linspace(t_sorted[0], t_sorted[-1], t_fit_len)
             x_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 0], degree), t_fit)
-            y_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 1], degree), t_fit)
+            y_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 1], 2), t_fit)
             z_fit = np.polyval(np.polyfit(t_sorted, points_sorted[:, 2], degree), t_fit)
 
             points_line = self.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
             paths.append(points_line)
 
-
-        path_pairs = find_left_to_right_pairs(paths)
-
         paths_np = np.asarray(paths)
 
-        left_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
-        right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
+        path_pairs = find_left_to_right_pairs(paths_np, masks)
+
+        path_pairs = np.atleast_2d(path_pairs)
+        if path_pairs.size > 0 and path_pairs.shape[1] > 0:
+            left_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
+            right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
+
+        else:
+            left_paths = [[]]
+            right_paths = [[]]
+        #left_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
+        #right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)
@@ -285,7 +319,7 @@ class TimeSyncListener:
             self.left_path_publisher_2.publish_path([], frame_id)
             self.right_path_publisher_2.publish_path([], frame_id)
 
-        self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id)
+        self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
         self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, path_pairs, frame_id, yolo_mask=False)
 
         #self.point_cloud_publisher.publish_pointcloud([], filtered_right_points, filtered_left_points, frame_id)

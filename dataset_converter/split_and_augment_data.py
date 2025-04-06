@@ -22,6 +22,7 @@ input_folders = [
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
 ]
 

@@ -8,11 +8,11 @@ import os
 import matplotlib.pyplot as plt
 
 # Parameters
-bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/fwt_uni_settings_04.bag'  # insert bagfile
+bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/7.bag'  # insert bagfile
 rgb_topic = "/hazard_front/zed_node_front/left/image_rect_color"
 depth_topic = "/hazard_front/zed_node_front/depth/depth_registered"
 camera_topic = "/hazard_front/zed_node_front/depth/camera_info"
-output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_UNI_06"
+output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_UNI_INTERSECTION_01"
 frame_skip = 60  # Define how many frames to skip
 
 # Create output directory if it doesn't exist
