@@ -235,7 +235,7 @@ class TimeSyncListener:
         paths = []
         masks = []
 
-        kernel = np.ones((3, 3), np.uint8)
+        kernel = np.ones((1, 1), np.uint8)
         degree = 2  # Moved out of loop
 
         # Precompute t_fit
@@ -246,7 +246,7 @@ class TimeSyncListener:
                 continue
             # Convert mask to uint8 and extract largest component
             mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
-            mask = remove_smaller_parts(mask, min_size=2000)
+            #mask = remove_smaller_parts(mask, min_size=2000)
 
             mask = cv2.erode(mask, kernel, iterations=1)
             masks.append(mask)

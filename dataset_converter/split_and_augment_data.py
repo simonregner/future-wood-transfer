@@ -17,8 +17,8 @@ SPECIFIC_CLASSES = ['2', '3', '5']  # Flip only if one of these classes is prese
 input_folders = [
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
