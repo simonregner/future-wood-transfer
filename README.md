@@ -109,3 +109,11 @@ sudo docker image tag future_wood_transfer:latest simonregner/future_wood_transf
 ```
 sudo docker image push simonregner/future_wood_transfer:v1.5
 ```
+
+```
+sudo docker save simonregner/future_wood_transfer:v3.5.1 | gzip -> /home/simon/Downloads/future_wood_transfer_v3_5_1.tar.gz
+```
+
+```angular2html
+sudo docker load --input /home/simon/Downloads/future_wood_transfer_v3_5_1.tar.gz
+```

@@ -9,20 +9,25 @@ from pathlib import Path
 # Toggle augmentation on/off
 ENABLE_AUGMENTATION = True
 
+SAVE_AS_GRAYSCALE = False
+
 # New boolean: if True, flip only if one of the specific classes is in the label file.
 FLIP_ONLY_IF_SPECIFIC_CLASSES = True
 SPECIFIC_CLASSES = ['2', '3', '5']  # Flip only if one of these classes is present.
 
 # Set main input folders
 input_folders = [
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/images',
+
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
 ]
 
@@ -120,6 +125,105 @@ def jitter_colors(image):
     hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1] * random.uniform(0.5, 1.7), 0, 255)
     return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
+def shift_hue_realistic_dynamic(
+    img_bgr: np.ndarray,
+    dst_hue_range: tuple[float, float],
+    factor: float,
+    sat_scale_range: tuple[float, float] = (1.0, 1.0),
+    val_scale_range: tuple[float, float] = (1.0, 1.0),
+    auto_src: bool = True,
+    manual_src_range: tuple[float, float] = (0.0, 360.0)
+) -> np.ndarray:
+    """
+    Realistically shift hues in img_bgr that correspond to dominant green/brown regions
+    toward random hues in dst_hue_range by factor, with per-pixel variation in saturation
+    and value. Automatically detects source hue range from image if auto_src is True.
+
+    Parameters
+    ----------
+    img_bgr : ndarray
+        Input BGR image.
+    dst_hue_range : (float, float)
+        Target hue range in degrees (0–360) for remapped colors.
+    factor : float
+        0=no change, 1=full remap.
+    sat_scale_range : (float, float)
+        Range to randomly scale S for affected pixels.
+    val_scale_range : (float, float)
+        Range to randomly scale V for affected pixels.
+    auto_src : bool
+        If True, detect source hue range automatically based on color dominance.
+    manual_src_range : (float, float)
+        If auto_src False, use this hue range in degrees.
+
+    Returns
+    -------
+    out_bgr : ndarray
+        Color-shifted image.
+    """
+    # clamp inputs
+    factor = np.clip(factor, 0.0, 1.0)
+    sat_min, sat_max = max(0.0, sat_scale_range[0]), max(0.0, sat_scale_range[1])
+    val_min, val_max = max(0.0, val_scale_range[0]), max(0.0, val_scale_range[1])
+
+    # convert to HSV
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV).astype(np.float32)
+    H, S, V = cv2.split(hsv)
+
+    h_all = H.flatten()
+
+    # detect source hue range automatically
+    if auto_src:
+        # detect green vs brown dominance via average BGR channels
+        B, G, R = cv2.split(img_bgr.astype(np.float32))
+        # green regions: G > R and G > B
+        green_mask = (G > R) & (G > B)
+        # brown regions: R > G and R > B
+        brown_mask = (R > G) & (R > B)
+        # choose mask based on which dst_hue_range is predominantly green or brown
+        mid = (dst_hue_range[0] + dst_hue_range[1]) / 2
+        if 90 < mid < 170:
+            src_mask = brown_mask  # remap browns to greens
+        else:
+            src_mask = green_mask  # remap greens to browns or others
+        hues = H[src_mask]
+        if hues.size > 0:
+            # take percentiles to cover full distribution
+            lo, hi = np.percentile(hues, [2, 98])
+        else:
+            lo, hi = manual_src_range[0]/2.0, manual_src_range[1]/2.0
+        src_min, src_max = lo, hi
+    else:
+        # use manual range
+        src_min, src_max = [h/2.0 for h in manual_src_range]
+
+    # target hue random per-pixel
+    dst_min, dst_max = [h/2.0 for h in dst_hue_range]
+
+    # build mask for source hues (wraparound ok)
+    if src_min <= src_max:
+        mask = (H >= src_min) & (H <= src_max)
+    else:
+        mask = (H >= src_min) | (H <= src_max)
+
+    ys, xs = np.where(mask)
+    if ys.size == 0:
+        return img_bgr
+
+    H_masked = H[ys, xs]
+    dst_h_pixels = np.random.uniform(dst_min, dst_max, size=H_masked.shape)
+    delta = dst_h_pixels - H_masked
+    delta = (delta + 90) % 180 - 90
+    H[ys, xs] = (H_masked + factor * delta) % 180
+
+    sat_scales = np.random.uniform(sat_min, sat_max, size=ys.shape)
+    val_scales = np.random.uniform(val_min, val_max, size=ys.shape)
+    S[ys, xs] = np.clip(S[ys, xs] * ((1-factor) + factor * sat_scales), 0, 255)
+    V[ys, xs] = np.clip(V[ys, xs] * ((1-factor) + factor * val_scales), 0, 255)
+
+    hsv_shifted = cv2.merge([H, S, V]).astype(np.uint8)
+    return cv2.cvtColor(hsv_shifted, cv2.COLOR_HSV2BGR)
+
 # New function to flip image and update labels (including flipping polygons)
 def clamp(value, min_value=0.0, max_value=1.0):
     return max(min_value, min(max_value, value))
@@ -172,7 +276,19 @@ augmentations = {
     'brighter': lambda img: adjust_brightness(img, 1.5),
     'noise': lambda img: add_gaussian_noise(img, 1.5),
     'jitter': lambda img: jitter_colors(img),
-    # 'flip' will be handled separately using our custom function.
+    'spring': lambda img: shift_hue_realistic_dynamic(img,
+        dst_hue_range=(100, 160),
+        factor=0.8,
+        sat_scale_range=(1.0, 1.3),
+        val_scale_range=(1.0, 1.1),
+        auto_src=True),
+    'fall': lambda img: shift_hue_realistic_dynamic(img,
+        dst_hue_range=(10, 25),
+        factor=0.9,
+        sat_scale_range=(0.7, 1.0),
+        val_scale_range=(0.8, 1.0),
+        auto_src=True)
+    #'flip' will be handled separately using our custom function.
 }
 
 
@@ -186,7 +302,14 @@ def copy_and_augment_files(images, labels, set_name):
         output_label_path = os.path.join(output_structure[set_name]['labels'], unique_label_name)
 
         # Copy original image
-        shutil.copy(image_path, output_image_path)
+        image = cv2.imread(image_path)
+        if image is None:
+            continue
+
+        if SAVE_AS_GRAYSCALE:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        cv2.imwrite(output_image_path, image)
 
         # Copy label if exists; otherwise, create an empty label file
         if os.path.exists(label_path):
@@ -196,11 +319,11 @@ def copy_and_augment_files(images, labels, set_name):
 
         # Apply augmentations if enabled
         if ENABLE_AUGMENTATION:
-            image = cv2.imread(image_path)
+            image = cv2.imread(output_image_path)
             if image is None:
                 continue
             # Randomly select 1 or 2 augmentations, including 'flip'
-            num_augmented = random.randint(1, 2)
+            num_augmented = random.randint(2, 4)
             chosen_augs = random.sample(list(augmentations.keys()) + ['flip'], num_augmented)
             for aug in chosen_augs:
                 augmented_image_name = generate_unique_name(image_path, suffix=aug)

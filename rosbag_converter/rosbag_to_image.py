@@ -8,12 +8,12 @@ import os
 import matplotlib.pyplot as plt
 
 # Parameters
-bag_file_path = '/home/simon/Documents/Master-Thesis/ROSBAG/fwt_2025-04-07-16-25-06_1.bag'  # insert bagfile
+bag_file_path = '/media/simon/T7 Shield/fwt/fwt_2025-04-08-16-08-43_0.bag'  # insert bagfile
 rgb_topic = "/hazard_front/zed_node_front/left/image_rect_color"
 depth_topic = "/hazard_front/zed_node_front/depth/depth_registered"
 camera_topic = "/hazard_front/zed_node_front/depth/camera_info"
-output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/ROSBAG_FOREST"
-frame_skip = 60  # Define how many frames to skip
+output_dir = "/home/simon/Documents/Master-Thesis/ROSBAG_images/MM_INTERSECTION"
+frame_skip = 10  # Define how many frames to skip
 
 # Create output directory if it doesn't exist
 if not os.path.exists(output_dir):

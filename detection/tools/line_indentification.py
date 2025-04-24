@@ -85,7 +85,33 @@ def is_overlap_below_threshold(mask1, mask2, threshold=0.4):
 
     return overlap_ratio_1 > 0 or overlap_ratio_2 > 0
 
-def find_left_to_right_pairs(boundaries, masks):
+def generate_parallel_line(points, parallel_direction=-1, offset_distance = 3.0):
+    # Step 1: Project to XZ plane
+    points_xz = points[:, [0, 2]]  # shape (N, 2)
+    y_values = points[:, 1]  # Save Y values
+
+    # Step 2: Compute direction vectors and normals
+    normals = []
+    for i in range(len(points_xz)):
+        if i == len(points_xz) - 1:
+            direction = points_xz[i] - points_xz[i - 1]
+        else:
+            direction = points_xz[i + 1] - points_xz[i]
+
+        direction = direction / np.linalg.norm(direction)  # normalize
+        normal = np.array([parallel_direction*direction[1], direction[0]])  # rotate 90° counter-clockwise
+        normals.append(normal)
+
+    normals = np.array(normals)
+
+    # Step 3: Offset by 3 meters along the normal direction
+
+    points_xz_parallel = points_xz + normals * offset_distance
+
+    # Step 4: Reconstruct the full 3D points (with original Y)
+    return np.stack((points_xz_parallel[:, 0], y_values, points_xz_parallel[:, 1]), axis=1)
+
+def find_left_to_right_pairs(boundaries, masks, road_width=2.0):
 
     n = len(boundaries)
     vectors = [direction_vector(b) for b in boundaries]
@@ -125,12 +151,39 @@ def find_left_to_right_pairs(boundaries, masks):
             # Compute global center of pointcloud
             center = [0,0,0]
 
-            boundary_center = center_point(boundaries[idx])
+            boundary_center = boundaries[idx][0]
             side = 'left' if boundary_center[0] < center[0] else 'right'
 
             if side == 'left':
-                output_pairs.append([idx, None])
-            else:
-                output_pairs.append([None, idx])
+                # Desired Z offset (positive = up, negative = down)
+                z_offset = road_width
 
-    return np.array(output_pairs, dtype=object)
+                # Create offset in Z direction
+                points_shifted = generate_parallel_line(boundaries[idx], 1, offset_distance=road_width)
+
+
+                N = len(boundaries)
+
+                boundaries_list = [boundaries[i] for i in range(N)]
+                # later...
+                boundaries_list.append(points_shifted)
+                # finally...
+                boundaries = np.array(boundaries_list)
+                output_pairs.append([idx, N])
+            else:
+                # Desired Z offset (positive = up, negative = down)
+                z_offset = -2.0
+
+                # Create offset in Z direction
+                points_shifted = generate_parallel_line(boundaries[idx], -1, offset_distance=road_width)
+                N = len(boundaries)
+
+                boundaries_list = [boundaries[i] for i in range(N)]
+                # later...
+                boundaries_list.append(points_shifted)
+                # finally...
+                boundaries = np.array(boundaries_list)
+
+                output_pairs.append([N, idx])
+
+    return np.array(output_pairs, dtype=object), boundaries

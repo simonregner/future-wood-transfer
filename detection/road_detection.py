@@ -46,7 +46,7 @@ class YOLOModelLoader:
             raise ValueError("Model is not loaded. Please call load_model() first.")
         if type(image) is not str:
             image = np.array(image, dtype=np.uint8)
-        results = cls.model.predict(source=image, conf=conf, retina_masks=True,  classes=[7])#, agnostic_nms=True, retina_masks=True)
+        results = cls.model.predict(source=image, conf=conf, retina_masks=True)#,  classes=[7])#, agnostic_nms=True, retina_masks=True)
         return results
 
 def show_results(results):

@@ -44,7 +44,7 @@ def get_image_dimensions(txt_path):
     print(f"⚠️ Image not found for {txt_path}")
     return None, None
 
-def dilate_polygon(polygon, image_width, image_height, dilation_pixels=2):
+def dilate_polygon(polygon, image_width, image_height, dilation_pixels=5):
     # Create empty mask
     mask = np.zeros((image_height, image_width), dtype=np.uint8)
 
@@ -91,7 +91,7 @@ def process_segmentation_file(txt_path):
         polygon = [(coords[i]*image_width, coords[i+1]*image_height) for i in range(0, len(coords), 2)]
         smoothed = smooth_polygon(polygon, epsilon_factor=0.001)
 
-        dilated = dilate_polygon(smoothed, image_width, image_height, dilation_pixels=2)
+        dilated = dilate_polygon(smoothed, image_width, image_height, dilation_pixels=5)
 
         resampled = smooth_polygon(dilated, epsilon_factor=0.001)
 

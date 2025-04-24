@@ -4,6 +4,7 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+from sympy.codegen.ast import continue_
 
 
 class YOLOMaskEditor:
@@ -64,6 +65,7 @@ class YOLOMaskEditor:
         self.root.bind("<Control-Left>", lambda e: self.prev_segment())
         self.root.bind("<Control-Delete>", lambda e: self.delete_current_image())
 
+        self._force_save = False
 
         self.history = []
         self.original_img = None
@@ -253,9 +255,9 @@ class YOLOMaskEditor:
             self.refresh_canvas()
 
     def save_current_mask_to_txt(self, event=None):
-        if hasattr(self, '_force_save') and self._force_save:
-            self._force_save = False
-        elif np.array_equal(self.mask_img, self.original_img):
+        #if hasattr(self, '_force_save') and self._force_save:
+        #    continue
+        if np.array_equal(self.mask_img, self.original_img):
             self.save_info.config(text="No changes to save.", fg="gray")
             return
         if np.array_equal(self.mask_img, self.original_img):
@@ -266,7 +268,7 @@ class YOLOMaskEditor:
         _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        if len(contours) < 2:
+        if not self._force_save and len(contours) < 2:
             self.save_info.config(text="Only 1 polygon found. Press Ctrl+Enter to force save.", fg="red")
             self._pending_action = 'save'
             return
@@ -287,6 +289,8 @@ class YOLOMaskEditor:
             f.write("\n" + "\n".join(output_lines))
         self.original_img = self.mask_img.copy()
         self.save_info.config(text="Changes saved.", fg="green")
+        self._force_save = False
+
         # self.load_segmentations()  # Removed live update after save
 
     def prev_segment(self):
