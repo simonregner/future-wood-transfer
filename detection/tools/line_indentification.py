@@ -16,7 +16,7 @@ def direction_vector(boundary:np.array):
     if boundary.size < 3:
         return None
 
-    p1 = np.array([boundary[-3][0], boundary[-3][2]])
+    p1 = np.array([boundary[0][0], boundary[0][2]])
     p2 = np.array([boundary[-1][0], boundary[-1][2]])
 
     p1_mean = np.array([boundary[0][0], boundary[0][2]])

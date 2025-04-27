@@ -1,4 +1,7 @@
 import sys
+
+from numpy.matlib import empty
+
 sys.path.append("..")
 
 import rospy
@@ -240,8 +243,8 @@ class TimeSyncListener:
         masks = []
         road_masks = []
 
-        kernel = np.ones((2, 2), np.uint8)
-        degree = 2  # Moved out of loop
+        kernel = np.ones((7, 7), np.uint8)
+        degree = 3  # Moved out of loop
 
         # Precompute t_fit
         t_fit_len = 50
@@ -297,6 +300,7 @@ class TimeSyncListener:
                 t_fit_main = np.linspace(t_sorted[0], t_sorted[-1], t_fit_len)
                 x_fit_main = np.polyval(poly_x, t_fit_main)
                 y_fit_main = np.polyval(poly_y, t_fit_main)
+                #y_fit_main = np.zeros(t_fit_len)
                 z_fit_main = np.polyval(poly_z, t_fit_main)
 
                 # Estimate a spacing for the t-values.
@@ -304,7 +308,7 @@ class TimeSyncListener:
                 # (You may also compute the median of t differences if that's more robust.)
                 dt = t_sorted[1] - t_sorted[0]
 
-                n_extension = 20
+                n_extension = 0
 
                 # Generate n_extension extra t-values that extend *before* the beginning of your data.
                 # For example, if you have 5 extra points, you can create them from t_sorted[0] - 5*dt up to t_sorted[0]
@@ -327,6 +331,7 @@ class TimeSyncListener:
                 points_line = self.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
                 paths.append(points_line)
             else:
+                continue
                 mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
                 road_masks.append(mask)
 
@@ -346,6 +351,10 @@ class TimeSyncListener:
         #right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
 
         for i in range(path_pairs.shape[0]):
+            if len(left_paths[i]) == 0 or len(right_paths[i]) == 0 :
+                rospy.logerr(f"Path Pair empty")
+                continue
+            #print(left_paths[i], right_paths[i])
             self.road_width = (self.road_width + get_road_width(left_paths[i], right_paths[i])) / 2
 
         # Publish the first set of left/right paths
@@ -363,7 +372,12 @@ class TimeSyncListener:
         self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
         self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, road_masks, path_pairs, frame_id, yolo_mask=False)
 
-        #self.point_cloud_publisher.publish_pointcloud([], filtered_right_points, filtered_left_points, frame_id)
+
+        if False:
+            from detection.pointcloud.create_pointcloud import create_pointcloud
+
+            pointcloud = create_pointcloud(depth_image, self.intrinsic_matrix)
+            self.point_cloud_publisher.publish_pointcloud(pointcloud.points, [], [], frame_id)
 
         end_time = time.time()
 
