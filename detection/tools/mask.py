@@ -289,4 +289,83 @@ def reduce_mask_width(mask, bbox):
 
     return mask
 
+def fit_polynomial_to_mask(mask: np.ndarray, degree: int, max_radius: int = None):
+    """
+    Fit an n-degree polynomial y = p(x) to the points in a binary mask.
+    Optionally, restrict fitting to points within a certain vertical radius from the centerline.
+
+    Returns the polynomial coefficients (highest-power first) and the x-range of the data.
+    """
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        raise ValueError("Mask contains no foreground points.")
+
+    if max_radius is not None:
+        # Compute rough centerline
+        centerline = {}
+        for x, y in zip(xs, ys):
+            if x not in centerline:
+                centerline[x] = []
+            centerline[x].append(y)
+        centerline = {x: np.mean(ylist) for x, ylist in centerline.items()}
+
+        # Filter points within max_radius
+        selected_xs = []
+        selected_ys = []
+        for x, y in zip(xs, ys):
+            if abs(y - centerline.get(x, y)) <= max_radius:
+                selected_xs.append(x)
+                selected_ys.append(y)
+
+        xs = np.array(selected_xs)
+        ys = np.array(selected_ys)
+
+    # Fit polynomial
+    coeffs = np.polyfit(xs, ys, degree)
+
+    # Compute the min/max x where the selected mask had points
+    x_min, x_max = xs.min(), xs.max()
+
+    return coeffs, x_min, x_max
+
+def rasterize_polynomial(mask_shape, coeffs, x_min, x_max, kernel_size):
+    """
+    Rasterize a polynomial curve into a binary mask of shape mask_shape,
+    but only over x ∈ [x_min, x_max].
+
+    Parameters
+    ----------
+    mask_shape : (H, W)
+    coeffs : array-like, polynomial coeffs from np.polyfit (highest-order first)
+    x_min, x_max : int, inclusive range of x over which to draw
+    kernel_size : int, thickness of the curve in pixels
+
+    Returns
+    -------
+    out_mask : np.ndarray of shape (H, W), dtype uint8
+        255 where the clipped curve is drawn, 0 elsewhere.
+    """
+    H, W = mask_shape
+
+    # Clip x-range into valid image bounds
+    x_min = max(0, x_min)
+    x_max = min(W - 1, x_max)
+
+    # Sample only within that range
+    xs = np.arange(x_min, x_max + 1)
+    ys = np.polyval(coeffs, xs)
+
+    # Round & clip y to valid pixel rows
+    pts = np.vstack([
+        xs,
+        np.clip(np.round(ys).astype(int), 0, H - 1)
+    ]).T
+
+    # Draw
+    out_mask = np.zeros((H, W), dtype=np.uint8)
+    pts_cv = pts.reshape(-1, 1, 2)  # OpenCV expects shape (n,1,2)
+    cv2.polylines(out_mask, [pts_cv], isClosed=False, color=255,
+                  thickness=kernel_size, lineType=cv2.LINE_AA)
+
+    return out_mask
 

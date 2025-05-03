@@ -1,7 +1,4 @@
 import sys
-
-from numpy.matlib import empty
-
 sys.path.append("..")
 
 import rospy
@@ -21,21 +18,19 @@ import detection.ros_tools.publisher.ros_mask_publisher as ros_mask_publisher
 import detection.ros_tools.publisher.ros_pointcloud_publisher as ros_pointcloud_publisher
 import detection.ros_tools.publisher.ros_road_lines_publisher as ros_road_lines_publisher
 
-from detection.tools.mask import  remove_smaller_parts
-from detection.tools.line_indentification import find_left_to_right_pairs
 
-from detection.tools.road_information import  get_road_width
+import detection.utils.path_utils as path_utils
+import detection.utils.pointcloud_utils as pointcloud_utils
+import detection.utils.road_utils as road_utils
+import detection.utils.boundary_identification_utils as boundary_identification_utils
 
+import detection.utils.transformation_utils as transformation_utils
 
-from scipy.spatial.transform import Rotation as R
+import detection.utils.timer_utils as timer_utils
 
-import time
 import scipy.ndimage as nd
 
-from sklearn.decomposition import PCA
 
-from scipy.spatial import ConvexHull
-from itertools import combinations
 
 last_processed_time = rospy.Time()
 
@@ -141,29 +136,6 @@ class TimeSyncListener:
         except rospy.ROSException as e:
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
 
-    def quaternion_to_euler(self, q):
-        """Convert quaternion to Euler angles (roll, pitch, yaw)."""
-        rotation = R.from_quat([q.x, q.y, q.z, q.w])
-        return rotation.as_euler('xyz', degrees=False)
-
-    def ensure_first_point_closest_to_origin(self, points) -> np.array:
-        points = list(points)  # in case it's a numpy array or tuple
-        first = np.array(points[0])
-        last = np.array(points[-1])
-        origin = np.array([0, 0, 0])
-
-        if np.linalg.norm(last - origin) < np.linalg.norm(first - origin):
-            return points[::-1]  # reversed
-        return points
-
-    def pointscloud_distance(self, points, distance=10):
-        distances = np.linalg.norm(points, axis=1)
-
-        # Keep only points within distance 10
-        filtered_points = points[distances <= distance]
-
-        return filtered_points
-
     def callback(self, image_msg, depth_msg):
         """
         Callback function that handles synchronized RGB and depth messages.
@@ -184,7 +156,8 @@ class TimeSyncListener:
             return
 
         last_processed_time = rospy.Time.now()
-        start_time = time.time()
+
+        start_time = timer_utils.start_timer()
 
         # Initialize intrinsic matrix and image type if not already done
         if self.intrinsic_matrix is None:
@@ -238,124 +211,79 @@ class TimeSyncListener:
             self.mask_image_publisher.publish_yolo_mask(rgb_image, None, None, None, frame_id)
             return
 
+        #if self.pointcloud_previous == None:
+        #    self.pointcloud_previous = pointcloud_utils.create_pointcloud(depth_image, self.intrinsic_matrix)
+        #else:
+        #    new_pointcloud = pointcloud_utils.create_pointcloud(depth_image, self.intrinsic_matrix)
+        #    tranformation = transformation_utils.calculate_transformation_matrix(self.pointcloud_previous, new_pointcloud)
+        #    self.pointcloud_previous = new_pointcloud
+
+
 
         paths = []
         masks = []
         road_masks = []
 
         kernel = np.ones((7, 7), np.uint8)
+        #kernel = 3
         degree = 3  # Moved out of loop
 
-        # Precompute t_fit
-        t_fit_len = 50
 
         for i, mask_data in enumerate(results[0].masks.data):
             if results[0].boxes.cls[i].cpu().numpy().astype(np.uint8) == 7:
                 # Convert mask to uint8 and extract largest component
                 mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
-                #mask = remove_smaller_parts(mask, min_size=2000)
 
                 mask = cv2.erode(mask, kernel, iterations=1)
+
+                # TODO: Test if this methode of fitting a line over the mask is better for the results
+                #mask_coeffs, xmin, xmax  = mask_tool.fit_polynomial_to_mask(mask_out, degree=2, max_radius=600)
+                #mask = mask_tool.rasterize_polynomial(mask.shape, mask_coeffs, xmin, xmax, 3)
+
                 masks.append(mask)
 
                 # Get point cloud and filter NaNs
                 point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
                 points = np.asarray(point_cloud.points)
-                if points.size == 0:
+                if points.size == 0 or len(points) < degree + 1:
                     continue  # skip empty point clouds
 
-                points = self.pointscloud_distance(points, distance=20)
+                points = pointcloud_utils.filter_pointcloud_by_distance(points, distance=13)
 
                 points = points[~np.isnan(points).any(axis=1)]
-                if len(points) < degree + 1:
-                    continue  # Not enough points to fit polynomial
 
-                min_point = np.min(points, axis=0)
-                max_point = np.max(points, axis=0)
-                max_distance = np.linalg.norm(max_point - min_point)
+                max_distance = pointcloud_utils.get_max_distance_from_pointcloud(points)
 
                 if max_distance < 1:
                     rospy.logwarn(f"Remove Mask")
                     continue
-
-                if max_distance < 5:
+                elif max_distance < 5:
                     rospy.logwarn(f"Max Distance < 5m: {max_distance}")
                     degree = 2
                 else:
                     degree = 3
 
-                # PCA to sort points
-                t = PCA(n_components=1).fit_transform(points).flatten()
-                sorted_idx = np.argsort(t)
-                points_sorted = points[sorted_idx]
-                t_sorted = t[sorted_idx]
+                x_fit, y_fit, z_fit = path_utils.calculate_fitted_line(points, degree, t_fit=50)
 
-                # Fit polynomial for each coordinate using t_sorted as the parameter:
-                # (you might want to adjust degrees as needed)
-                poly_x = np.polyfit(t_sorted, points_sorted[:, 0], degree)
-                poly_y = np.polyfit(t_sorted, points_sorted[:, 1], 2)
-                poly_z = np.polyfit(t_sorted, points_sorted[:, 2], degree)
+                points_line = path_utils.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
 
-                # Generate the main fitted t-values for your current range:
-                t_fit_main = np.linspace(t_sorted[0], t_sorted[-1], t_fit_len)
-                x_fit_main = np.polyval(poly_x, t_fit_main)
-                y_fit_main = np.polyval(poly_y, t_fit_main)
-                #y_fit_main = np.zeros(t_fit_len)
-                z_fit_main = np.polyval(poly_z, t_fit_main)
-
-                # Estimate a spacing for the t-values.
-                # One simple approach is to use the difference between the first two sorted t-values.
-                # (You may also compute the median of t differences if that's more robust.)
-                dt = t_sorted[1] - t_sorted[0]
-
-                n_extension = 0
-
-                # Generate n_extension extra t-values that extend *before* the beginning of your data.
-                # For example, if you have 5 extra points, you can create them from t_sorted[0] - 5*dt up to t_sorted[0]
-                t_fit_ext = np.linspace(t_sorted[0] - n_extension * dt, t_sorted[0], n_extension, endpoint=False)
-
-                # Evaluate the fitted polynomial on the extension t-values:
-                x_fit_ext = np.polyval(poly_x, t_fit_ext)
-                y_fit_ext = np.polyval(poly_y, t_fit_ext)
-                z_fit_ext = np.polyval(poly_z, t_fit_ext)
-
-                # Option 1: If you want to keep them separate, you now have:
-                #   x_fit_ext, y_fit_ext, z_fit_ext  => extension points
-                #   x_fit_main, y_fit_main, z_fit_main => original fitted points
-
-                # Option 2: If you want to combine the extension and the fitted points:
-                x_fit = np.concatenate([x_fit_ext, x_fit_main])
-                y_fit = np.concatenate([y_fit_ext, y_fit_main])
-                z_fit = np.concatenate([z_fit_ext, z_fit_main])
-
-                points_line = self.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
                 paths.append(points_line)
             else:
                 continue
                 mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
                 road_masks.append(mask)
 
-        paths_np = np.asarray(paths)
-
-        path_pairs, path_np_extanded = find_left_to_right_pairs(paths_np, masks, road_width=self.road_width)
+        path_pairs, path_np_extanded = boundary_identification_utils.find_left_to_right_pairs(np.asarray(paths), masks, road_width=self.road_width)
 
         path_pairs = np.atleast_2d(path_pairs)
         if path_pairs.size > 0 and path_pairs.shape[1] > 0:
             left_paths = [path_np_extanded[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
             right_paths = [path_np_extanded[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
-
         else:
             left_paths = [[]]
             right_paths = [[]]
-        #left_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 0]]
-        #right_paths = [paths_np[i] if isinstance(i, int) else [] for i in path_pairs[:, 1]]
 
-        for i in range(path_pairs.shape[0]):
-            if len(left_paths[i]) == 0 or len(right_paths[i]) == 0 :
-                rospy.logerr(f"Path Pair empty")
-                continue
-            #print(left_paths[i], right_paths[i])
-            self.road_width = (self.road_width + get_road_width(left_paths[i], right_paths[i])) / 2
+        self.road_width = road_utils.calculate_road_width(self.road_width, left_paths, right_paths)
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)
@@ -379,10 +307,7 @@ class TimeSyncListener:
             pointcloud = create_pointcloud(depth_image, self.intrinsic_matrix)
             self.point_cloud_publisher.publish_pointcloud(pointcloud.points, [], [], frame_id)
 
-        end_time = time.time()
-
-        self.timers = [int((end_time - start_time) * 10 ** 9)] + self.timers [:-1]
-        print(f"Function executed in {end_time - start_time:.6f} seconds")
+        self.timers = timer_utils.end_timer(self.timers, start_time)
 
 
     def run(self):

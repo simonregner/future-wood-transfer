@@ -1,4 +1,3 @@
-
 import open3d as o3d
 import numpy as np
 
@@ -6,12 +5,12 @@ import numpy as np
 def pointcloud_transformation(pointcloud_current, pointcloud_previous):
     # Downsample the point clouds to speed up the registration
     voxel_size = 0.02  # adjust voxel size as needed (in meters)
-    pointcloud_previous_down = pointcloud_previous.voxel_down_sample(voxel_size)
+    pointcloud_previous = pointcloud_previous.voxel_down_sample(voxel_size)
     pointcloud_current = pointcloud_current.voxel_down_sample(voxel_size)
 
     # Estimate normals for better ICP performance (optional but recommended)
-    pointcloud_previous_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
-    pointcloud_current.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
+    pointcloud_previous.estimate_normals()
+    pointcloud_current.estimate_normals()
 
     # Compute an initial guess.
     # If the images are taken sequentially and the motion is small, the identity matrix may suffice.
@@ -22,8 +21,8 @@ def pointcloud_transformation(pointcloud_current, pointcloud_previous):
 
     # Run ICP registration to find the transformation that aligns pcd1 to pcd2
     reg = o3d.pipelines.registration.registration_icp(
-        pointcloud_previous_down, pointcloud_current, threshold, init_trans,
-        o3d.pipelines.registration.TransformationEstimationPointToPlane())
+        pointcloud_previous, pointcloud_current, threshold, init_trans,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint())
 
     T = reg.transformation
 
