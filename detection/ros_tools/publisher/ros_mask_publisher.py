@@ -24,7 +24,8 @@ class MaskPublisher:
             mask_boundaries: Detection results containing masks.
             frame_id (str): ROS frame ID for the published image.
         """
-        if mask_boundaries is None:
+
+        if mask_boundaries is None or len(path_pairs) == 0:
             # Publish the original image if no results or masks are found
             image_msg = self.bridge.cv2_to_imgmsg(image, encoding="bgr8")
             self.publisher.publish(image_msg)

@@ -13,7 +13,7 @@ def calculate_road_width(old_road_width, left_paths, right_paths, max_diff_to_ol
     for i in range(len(left_paths)):
         if len(left_paths[i]) == 0 or len(right_paths[i]) == 0:
             rospy.logerr(f"Path Pair empty")
-            continue
+            return None
 
         new_road_width = (new_road_width + pointcloud_utils.get_distance_between_points(left_paths[i][0], right_paths[i][0])) / 2
 

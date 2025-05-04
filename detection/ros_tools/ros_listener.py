@@ -204,21 +204,13 @@ class TimeSyncListener:
             depth_image = depth_image.reshape((rgb_image.shape[0], rgb_image.shape[1], 1))
 
         # Perform prediction using the loaded model
-        results = self.model_loader.predict(rgb_image)
+        masks_predicted, classes_predicted = self.model_loader.predict(rgb_image)
 
         # If no predictions are found, publish the mask and exit early
-        if not results[0].boxes:
+        if len(masks_predicted) == 0:
+            rospy.logwarn(f"No masks, classes received")
             self.mask_image_publisher.publish_yolo_mask(rgb_image, None, None, None, frame_id)
             return
-
-        #if self.pointcloud_previous == None:
-        #    self.pointcloud_previous = pointcloud_utils.create_pointcloud(depth_image, self.intrinsic_matrix)
-        #else:
-        #    new_pointcloud = pointcloud_utils.create_pointcloud(depth_image, self.intrinsic_matrix)
-        #    tranformation = transformation_utils.calculate_transformation_matrix(self.pointcloud_previous, new_pointcloud)
-        #    self.pointcloud_previous = new_pointcloud
-
-
 
         paths = []
         masks = []
@@ -229,10 +221,9 @@ class TimeSyncListener:
         degree = 3  # Moved out of loop
 
 
-        for i, mask_data in enumerate(results[0].masks.data):
-            if results[0].boxes.cls[i].cpu().numpy().astype(np.uint8) == 7:
+        for i, mask in enumerate(masks_predicted):
+            if classes_predicted[i] == 7:
                 # Convert mask to uint8 and extract largest component
-                mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
 
                 mask = cv2.erode(mask, kernel, iterations=1)
 
@@ -270,7 +261,6 @@ class TimeSyncListener:
                 paths.append(points_line)
             else:
                 continue
-                mask = (mask_data.cpu().numpy().astype(np.uint8) * 255)
                 road_masks.append(mask)
 
         path_pairs, path_np_extanded = boundary_identification_utils.find_left_to_right_pairs(np.asarray(paths), masks, road_width=self.road_width)
@@ -283,7 +273,10 @@ class TimeSyncListener:
             left_paths = [[]]
             right_paths = [[]]
 
-        self.road_width = road_utils.calculate_road_width(self.road_width, left_paths, right_paths)
+        new_road_width = road_utils.calculate_road_width(self.road_width, left_paths, right_paths)
+        if new_road_width is None:
+            return
+        self.road_width = new_road_width
 
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)

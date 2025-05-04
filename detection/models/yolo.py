@@ -17,7 +17,7 @@ class YOLOModelLoader:
             model_path (str): Path to the YOLO model file.
         """
         if cls.model is None:
-            print(f"Loading YOLOv11 model from {model_path}...")
+            print(f"Loading YOLO model from {model_path}...")
             cls.model = YOLO(model_path)
             print("Model loaded successfully.")
         else:
@@ -33,13 +33,17 @@ class YOLOModelLoader:
             conf (float): Confidence threshold for predictions.
 
         Returns:
-            results: YOLO predictions.
+            results: masks, classes.
         """
         if cls.model is None:
             raise ValueError("Model is not loaded. Please call load_model() first.")
         if type(image) is not str:
             image = np.array(image, dtype=np.uint8)
         results = cls.model.predict(source=image, conf=conf, retina_masks=True)#,  classes=[7])#, agnostic_nms=True, retina_masks=True)
+
+        if len(results[0].boxes) == 0:
+            return [], []
+
         masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
         classes = results[0].boxes.cls.cpu().numpy().astype(np.uint8)
         return masks, classes
