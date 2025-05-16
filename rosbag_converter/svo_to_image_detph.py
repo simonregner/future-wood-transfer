@@ -4,9 +4,9 @@ import numpy as np
 import os
 
 # Parameters
-svo_folder = "/media/simon/T7 Shield/FutureWoodTransfer/01_1"  # Folder with .svo2 files
-image_output_folder = "../../SVO/MM_ForestRoads_01/images"
-depth_output_folder = "../../SVO/MM_ForestRoads_01/depth"
+svo_folder = "/media/simon/T7 Shield/FutureWoodTransfer/03_1"  # Folder with .svo2 files
+image_output_folder = "../../SVO/MM_ForestRoads_03_1/old_images"
+depth_output_folder = "../../SVO/MM_ForestRoads_03_1/depth"
 N_ms = 500  # Save images every N milliseconds
 
 # Desired resolution

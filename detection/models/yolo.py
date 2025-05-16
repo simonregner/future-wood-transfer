@@ -29,7 +29,7 @@ class YOLOModelLoader:
         Perform inference using the loaded YOLO model.
 
         Args:
-            image_path (str): Path to the image to run inference on.
+            image (str): Path to the image to run inference on.
             conf (float): Confidence threshold for predictions.
 
         Returns:

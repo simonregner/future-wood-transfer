@@ -53,7 +53,7 @@ class TimeSyncListener:
 
         self.pointcloud_previous= None
 
-        self.max_depth = 20
+        self.max_depth = 13
 
         # Set timer for pause
         # TODO: Change for not static
@@ -127,12 +127,6 @@ class TimeSyncListener:
             # Example processing of the message (convert to OpenCV if it's an Image)
             if message_type == CameraInfo:
                 self.intrinsic_matrix = np.array(msg.K).reshape(3, 3)
-
-                print("Camera Distortion: ", msg.D)
-
-
-                print(self.intrinsic_matrix)
-                print(msg)
         except rospy.ROSException as e:
             rospy.logerr(f"Failed to receive a message on {topic_name}: {e}")
 
@@ -156,12 +150,12 @@ class TimeSyncListener:
             return
 
         last_processed_time = rospy.Time.now()
-
         start_time = timer_utils.start_timer()
 
         # Initialize intrinsic matrix and image type if not already done
         if self.intrinsic_matrix is None:
             self.single_listen(self.camera_info_topic, CameraInfo)
+            return
 
         if self.rgb_image_type is None:
             self.get_available_image_topic()
@@ -177,6 +171,7 @@ class TimeSyncListener:
 
         # Convert RGB image
         try:
+            # Check if we get compressed or uncompress image from ROS
             if self.rgb_image_type is Image:
                 rgb_image = self.bridge.imgmsg_to_cv2(image_msg, desired_encoding="bgr8")
             elif self.rgb_image_type is CompressedImage:
@@ -191,13 +186,11 @@ class TimeSyncListener:
         # Convert depth image
         try:
             depth_image = self.bridge.imgmsg_to_cv2(depth_msg).astype(np.float32)
+            depth_image[depth_image > self.max_depth] = 0
+            depth_image[np.isnan(depth_image)] = 0
         except Exception as e:
             rospy.logwarn(f"Error converting depth image: {e}")
             return
-
-        nan_mask = np.isnan(depth_image)
-        _, indices = nd.distance_transform_edt(nan_mask, return_distances=True, return_indices=True)
-        #depth_image = depth_image[tuple(indices)]
 
         # If depth and RGB dimensions differ, attempt a reshape (this is a no-op if dimensions already match)
         if rgb_image.shape[0] != depth_image.shape[0] or rgb_image.shape[1] != depth_image.shape[1]:
@@ -220,50 +213,55 @@ class TimeSyncListener:
         #kernel = 3
         degree = 3  # Moved out of loop
 
-
         for i, mask in enumerate(masks_predicted):
             if classes_predicted[i] == 7:
-                # Convert mask to uint8 and extract largest component
 
+                # Reduce the width of the mask with a kernel, that the pointcloud is not so width
                 mask = cv2.erode(mask, kernel, iterations=1)
 
                 # TODO: Test if this methode of fitting a line over the mask is better for the results
-                #mask_coeffs, xmin, xmax  = mask_tool.fit_polynomial_to_mask(mask_out, degree=2, max_radius=600)
+                #mask_coeffs, xmin, xmax  = mask_tool.fit_polynomial_to_mask(mask_out, degree=3, max_radius=600)
                 #mask = mask_tool.rasterize_polynomial(mask.shape, mask_coeffs, xmin, xmax, 3)
 
+
+                # Set Mask distance to the same as in the depth: self.max_dist
+                mask[depth_image == 0] = 0
                 masks.append(mask)
 
                 # Get point cloud and filter NaNs
                 point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
                 points = np.asarray(point_cloud.points)
-                if points.size == 0 or len(points) < degree + 1:
+
+                # Pointcloud needs to have a minimum number of points: min 1 more than the degree for the line fitting
+                if points.size == 0 or len(points) <= degree:
                     continue  # skip empty point clouds
 
-                points = pointcloud_utils.filter_pointcloud_by_distance(points, distance=13)
-
+                points = pointcloud_utils.filter_pointcloud_by_distance(points, distance=self.max_depth)
                 points = points[~np.isnan(points).any(axis=1)]
 
                 max_distance = pointcloud_utils.get_max_distance_from_pointcloud(points)
 
                 if max_distance < 1:
-                    rospy.logwarn(f"Remove Mask")
+                    rospy.loginfo(f"Remove Mask")
                     continue
                 elif max_distance < 5:
-                    rospy.logwarn(f"Max Distance < 5m: {max_distance}")
+                    rospy.loginfo(f"Max Distance < 5m: {max_distance}")
                     degree = 2
                 else:
-                    degree = 3
+                    degree = 2
 
                 x_fit, y_fit, z_fit = path_utils.calculate_fitted_line(points, degree, t_fit=50)
+
+                # TODO: Ask Hamid if y should be zero or not
+                #y_fit = np.zeros_like(x_fit)
 
                 points_line = path_utils.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
 
                 paths.append(points_line)
             else:
-                continue
                 road_masks.append(mask)
 
-        path_pairs, path_np_extanded = boundary_identification_utils.find_left_to_right_pairs(np.asarray(paths), masks, road_width=self.road_width)
+        path_pairs, path_np_extanded = boundary_identification_utils.find_left_to_right_pairs(np.asarray(paths), masks, road_masks, road_width=self.road_width)
 
         path_pairs = np.atleast_2d(path_pairs)
         if path_pairs.size > 0 and path_pairs.shape[1] > 0:
@@ -278,6 +276,8 @@ class TimeSyncListener:
             return
         self.road_width = new_road_width
 
+
+        ### Publish to ROS
         # Publish the first set of left/right paths
         self.left_path_publisher.publish_path(left_paths[0], frame_id)
         self.right_path_publisher.publish_path(right_paths[0], frame_id)
@@ -291,9 +291,10 @@ class TimeSyncListener:
             self.right_path_publisher_2.publish_path([], frame_id)
 
         self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
-        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, road_masks, path_pairs, frame_id, yolo_mask=False)
+        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, [], path_pairs, frame_id, yolo_mask=False)
 
 
+        # For testing: publish pointcloud from the mask -> slow down the detection when True
         if False:
             from detection.pointcloud.create_pointcloud import create_pointcloud
 
@@ -303,8 +304,9 @@ class TimeSyncListener:
         self.timers = timer_utils.end_timer(self.timers, start_time)
 
 
-    def run(self):
+    def run(self, distance):
         """
         Spins the node to keep it running and listening to messages.
         """
+        self.max_depth = float(distance)
         rospy.spin()

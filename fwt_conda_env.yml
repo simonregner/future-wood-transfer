@@ -1,0 +1,37 @@
+name: fwt_ml
+channels:
+  - conda-forge
+  - nvidia
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.10
+
+  # ML & DL Frameworks
+  - pytorch=2.1.0
+  - torchvision
+  - pytorch-cuda=11.8
+  - open3d
+  - numba
+  - numpy=1.26.4
+  - cython
+  - opencv
+  - pyopengl
+
+  # Ultralytics & Tools
+  #- ultralytics
+  #- ultralytics-thop
+
+  # Notebooks & Co.
+  - jupyterlab
+  - configargparse
+  - nbformat
+  - pyquaternion
+
+  - colorama
+
+  - appdirs
+  - lockfile
+
+  - pip:
+      - ultralytics

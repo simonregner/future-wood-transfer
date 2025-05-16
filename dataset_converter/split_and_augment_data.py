@@ -4,6 +4,7 @@ import shutil
 import hashlib
 import cv2
 import numpy as np
+from tqdm import tqdm
 from pathlib import Path
 
 # Toggle augmentation on/off
@@ -17,17 +18,19 @@ SPECIFIC_CLASSES = ['2', '3', '5']  # Flip only if one of these classes is prese
 
 # Set main input folders
 input_folders = [
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/images',
-
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_1/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/images',
     #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
 ]
 
@@ -294,7 +297,9 @@ augmentations = {
 
 # Helper function to copy files and apply augmentations
 def copy_and_augment_files(images, labels, set_name):
-    for image_path, label_path in zip(images, labels):
+    for image_path, label_path in tqdm(zip(images, labels),
+                                       total=len(images),
+                                       desc=f"Augmenting [{set_name}]"):
         # Generate unique file names for original image and label
         unique_image_name = generate_unique_name(image_path)
         output_image_path = os.path.join(output_structure[set_name]['images'], unique_image_name)

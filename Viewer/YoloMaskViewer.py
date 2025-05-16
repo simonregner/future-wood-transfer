@@ -16,6 +16,8 @@ class YOLOMaskEditor:
         self.current_file_index = 0
         self.current_segmentation_index = 0
         self.segments = []
+        self.lane_groups = {}  # key: group number, value: list of segment indices
+
 
         self.canvas = tk.Canvas(root, bg='gray')
         self.canvas_scale = 1.0
@@ -37,6 +39,9 @@ class YOLOMaskEditor:
         self.skip_lane_check = tk.Checkbutton(btn_frame, text="Skip lane masks (class 7)", variable=self.skip_lane_var,
                                               command=self.toggle_skip_lane)
         self.skip_lane_check.grid(row=0, column=3, padx=5)
+
+        self.save_group_btn = tk.Button(btn_frame, text="Save Lane Group", command=self.save_lane_group)
+        self.save_group_btn.grid(row=0, column=4, padx=5)
 
         self.delete_btn = tk.Button(btn_frame, text="Delete Image", command=self.delete_current_image)
         self.delete_seg_btn = tk.Button(btn_frame, text="Delete Segmentation", command=self.delete_current_segmentation)
@@ -64,6 +69,9 @@ class YOLOMaskEditor:
         self.root.bind("<Control-Right>", lambda e: self.next_segment())
         self.root.bind("<Control-Left>", lambda e: self.prev_segment())
         self.root.bind("<Control-Delete>", lambda e: self.delete_current_image())
+
+        for i in range(10):
+            self.root.bind(str(i), self.assign_group)
 
         self._force_save = False
 
@@ -255,11 +263,6 @@ class YOLOMaskEditor:
             self.refresh_canvas()
 
     def save_current_mask_to_txt(self, event=None):
-        #if hasattr(self, '_force_save') and self._force_save:
-        #    continue
-        if np.array_equal(self.mask_img, self.original_img):
-            self.save_info.config(text="No changes to save.", fg="gray")
-            return
         if np.array_equal(self.mask_img, self.original_img):
             self.save_info.config(text="No changes to save.", fg="gray")
             return
@@ -273,25 +276,36 @@ class YOLOMaskEditor:
             self._pending_action = 'save'
             return
         elif len(contours) > 2:
+            # keep only the two largest (if you really need two)
             contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
 
+        # build YOLO lines for class 7
         output_lines = []
+        height, width = self.rgb_image_shape
         for contour in contours:
             contour = contour.squeeze()
-            if len(contour.shape) == 1:
-                continue  # skip invalid contours
-            height, width = self.rgb_image_shape
-            norm_points = [f"{pt[0] / width:.6f} {pt[1] / height:.6f}" for pt in contour]
-            line = f"7 {' '.join(norm_points)}"
-            output_lines.append(line)
+            if contour.ndim != 2:
+                continue
+            norm_pts = [f"{pt[0] / width:.6f} {pt[1] / height:.6f}" for pt in contour]
+            output_lines.append("7 " + " ".join(norm_pts))
 
+        # append to the .txt
         with open(self.txt_files[self.current_file_index], 'a') as f:
             f.write("\n" + "\n".join(output_lines))
+
+        # reset force-save flag & update UI
+        self._force_save = False
         self.original_img = self.mask_img.copy()
         self.save_info.config(text="Changes saved.", fg="green")
-        self._force_save = False
 
-        # self.load_segmentations()  # Removed live update after save
+        # ——— NEW: advance to next segment in this file if any ———
+        if self.current_segmentation_index < len(self.segments) - 1:
+            self.current_segmentation_index += 1
+            self.show_segmentation()
+            self.update_buttons()
+        else:
+            # no more segments here, jump to next file/segment
+            self.next_segment()
 
     def prev_segment(self):
         if not np.array_equal(self.mask_img, self.original_img):
@@ -312,27 +326,45 @@ class YOLOMaskEditor:
         self.update_buttons()
 
     def next_segment(self):
-        # Skip files containing class 7 if toggle is on
-        skip_class_7 = getattr(self, 'skip_lane_enabled', False)
-        while skip_class_7 and self.current_file_index < len(self.txt_files):
-            with open(self.txt_files[self.current_file_index], 'r') as f:
-                if any(line.startswith('7') for line in f):
-                    self.current_file_index += 1
-                else:
-                    break
+        # 1) Handle unsaved changes
         if not np.array_equal(self.mask_img, self.original_img):
             self.save_info.config(
-                text="Unsaved changes! Press Ctrl+S to save or Ctrl+Enter to continue without saving.", fg="red")
+                text="Unsaved changes! Press Ctrl+S to save or Ctrl+Enter to continue without saving.",
+                fg="red")
             self._pending_action = 'next'
             return
-        if not np.array_equal(self.mask_img, self.original_img):
-            self.save_info.config(text="Unsaved changes! Press Ctrl+S to save.", fg="red")
+
+        # 2) Figure out the *candidate* next (file, segment) pair
+        next_file = self.current_file_index
+        next_seg = self.current_segmentation_index + 1
+
+        # if we ran out of segments in this file, move to the first segment of the next file
+        if next_seg >= len(self.segments):
+            next_file += 1
+            next_seg = 0
+
+        # 3) If skip-class-7 is on, skip entire files that contain any class 7
+        if getattr(self, 'skip_lane_enabled', False):
+            while next_file < len(self.txt_files):
+                with open(self.txt_files[next_file], 'r') as f:
+                    # if this file has any '7' class, skip it
+                    if any(line.startswith('7 ') for line in f):
+                        next_file += 1
+                    else:
+                        break
+
+        # nothing left to show?
+        if next_file >= len(self.txt_files):
             return
-        if self.current_segmentation_index < len(self.segments) - 1:
-            self.current_segmentation_index += 1
-        elif self.current_file_index < len(self.txt_files) - 1:
-            self.current_file_index += 1
-            self.load_segmentations()
+
+        # 4) Commit the jump
+        self.current_file_index = next_file
+        # reload that file’s segments (resets self.current_segmentation_index internally)
+        self.load_segmentations()
+        # then advance to the desired segment index within it
+        self.current_segmentation_index = min(next_seg, len(self.segments) - 1)
+
+        # 5) Finally draw
         self.show_segmentation()
         self.update_buttons()
 
@@ -475,6 +507,59 @@ class YOLOMaskEditor:
             print(f"Error deleting segmentation: {e}")
         except Exception as e:
             print(f"Error deleting segmentation: {e}")
+
+    def assign_group(self, event):
+        group_id = int(event.char)
+        if not self.segments:
+            return
+        class_id, _ = self.segments[self.current_segmentation_index]
+        if class_id != 7:
+            self.save_info.config(text="Only class 7 (lane) can be grouped.", fg="red")
+            return
+        for group in self.lane_groups.values():
+            if self.current_segmentation_index in group:
+                self.save_info.config(text="Segment already in a group.", fg="orange")
+                return
+        if group_id not in self.lane_groups:
+            self.lane_groups[group_id] = []
+        if len(self.lane_groups[group_id]) >= 2:
+            self.save_info.config(text=f"Group {group_id} already has 2 segments.", fg="orange")
+            return
+        self.lane_groups[group_id].append(self.current_segmentation_index)
+        self.save_info.config(text=f"Segment added to group {group_id}.", fg="green")
+
+    def save_lane_group(self):
+        if not self.lane_groups:
+            self.save_info.config(text="No lane groups to save.", fg="red")
+            return
+        txt_file = self.txt_files[self.current_file_index]
+        label_folder = os.path.dirname(txt_file)
+        label_name = os.path.splitext(os.path.basename(txt_file))[0]
+        group_dir = os.path.abspath(os.path.join(label_folder, "..", "groups"))
+        os.makedirs(group_dir, exist_ok=True)
+
+        height, width = self.rgb_image_shape
+        for group_id, group in self.lane_groups.items():
+            for seg_index in group:
+                mask = np.zeros((height, width), dtype=np.uint8)
+                _, points = self.segments[seg_index]
+                scaled_pts = np.array([[int(x * width), int(y * height)] for x, y in points], np.int32).reshape(
+                    (-1, 1, 2))
+                cv2.fillPoly(mask, [scaled_pts], 255)
+
+                # Determine next available numeric suffix
+                existing = [f for f in os.listdir(group_dir) if f.startswith(f"{label_name}_{group_id}_")]
+                used_indices = [int(f.split("_")[-1].split(".")[0]) for f in existing if
+                                f.split("_")[-1].split(".")[0].isdigit()]
+                next_index = 1
+                while next_index in used_indices:
+                    next_index += 1
+
+                out_path = os.path.join(group_dir, f"{label_name}_{group_id}_{next_index}.png")
+                cv2.imwrite(out_path, mask)
+
+        self.save_info.config(text=f"Saved lane masks to ../groups/", fg="blue")
+        self.lane_groups = {}
 
 
 if __name__ == "__main__":

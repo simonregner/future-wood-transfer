@@ -1,4 +1,7 @@
 import sys
+
+import rospy
+
 sys.path.append("..")
 
 from detection.tools.line_intersection import intersection_of_boundaries
@@ -6,7 +9,9 @@ from detection.tools.line_intersection import intersection_of_boundaries
 import numpy as np
 from itertools import combinations
 
-def find_left_to_right_pairs(boundaries, masks, road_width=2.0):
+from scipy.spatial.distance import directed_hausdorff
+
+def find_left_to_right_pairs(boundaries, masks, road_masks, road_width=2.0):
 
     n = len(boundaries)
     vectors = [direction_vector(b) for b in boundaries]
@@ -14,21 +19,26 @@ def find_left_to_right_pairs(boundaries, masks, road_width=2.0):
     # Compute all pairwise cosine similarities
     pairs = list(combinations(range(n), 2))
 
-    pair_scores = [[i, j, cosine_similarity(vectors[i], vectors[j]), distance_between_centers(boundaries[i], boundaries[j])] for i, j in pairs]
+    pair_scores = [[i, j, cosine_similarity(vectors[i], vectors[j]), distance_between_centers(boundaries[i], boundaries[j]), shape_similarity(boundaries[i], boundaries[j])] for i, j in pairs]
     pair_scores.sort(key=lambda x: x[2], reverse=True)  # sort by highest similarity
 
     used = set()
     output_pairs = []
 
-    for i, j, score, distance in pair_scores:
+    for i, j, score, distance, hausdorff in pair_scores:
+
+        maybe_score = score * (3 - hausdorff)
+
         if (
-                score <= 0.5
+                score <= 0.3
                 or i in used
                 or j in used
                 or distance < 1
-                or is_overlap_below_threshold(masks[i], masks[j], threshold=0.001)
+                or distance > 5
+                #or is_overlap_below_threshold(masks[i], masks[j], threshold=0.001)
                 or intersection_of_boundaries(boundaries[i], boundaries[j])
         ):
+            #rospy.logwarn(f"Line Identification:i in used: {i in used} j in used: {j in used} distance < 1: {distance < 1} distance > 5 {distance > 5} intersection_of_boundaries: {intersection_of_boundaries(boundaries[i], boundaries[j])}")
             continue
 
         direction = vectors[i]  # take direction from i (arbitrary)
@@ -49,8 +59,6 @@ def find_left_to_right_pairs(boundaries, masks, road_width=2.0):
             side = 'left' if boundary_center[0] < center[0] else 'right'
 
             if side == 'left':
-                # Desired Z offset (positive = up, negative = down)
-                z_offset = road_width
 
                 # Create offset in Z direction
                 points_shifted = generate_parallel_line(boundaries[idx], 1, offset_distance=road_width)
@@ -164,3 +172,15 @@ def generate_parallel_line(points, parallel_direction=-1, offset_distance=3.0):
     points_xz_parallel = points_xz + normals * offset_distance
 
     return np.stack((points_xz_parallel[:, 0], y_values, points_xz_parallel[:, 1]), axis=1)
+
+def normalize_path(path):
+    arr = np.array(path)
+    centroid = np.mean(arr, axis=0)
+    return arr - centroid  # centered at origin
+
+def shape_similarity(p1, p2):
+    p1n = normalize_path(p1)
+    p2n = normalize_path(p2)
+    d1 = directed_hausdorff(p1n, p2n)[0]
+    d2 = directed_hausdorff(p2n, p1n)[0]
+    return max(d1, d2)

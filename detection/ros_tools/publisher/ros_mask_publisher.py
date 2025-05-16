@@ -50,7 +50,7 @@ class MaskPublisher:
 
 
         # Generate a fixed color (can use random or unique colors if needed)
-        color = [[0, 0, 255], [0, 255, 0], [255, 0, 0], [0, 255, 255], [255, 255, 0], [255, 0, 255], [255, 255, 255]]
+        color = [[0, 0, 255], [0, 255, 0], [255, 0, 0], [0, 255, 255], [255, 255, 0], [255, 0, 255], [255, 255, 255], [155, 0, 155], [155, 155, 0], [0, 155, 155], [0, 155, 255], [0, 255, 155], [255, 155, 0], [155, 255, 0], [155, 0, 255], [255, 0, 155]]
 
         # Overlay all masks in a vectorized manner
         #for i, scaled_mask in enumerate(masks_resized):
@@ -69,7 +69,7 @@ class MaskPublisher:
 
                 color_overlay = np.zeros_like(image)
                 color_overlay[masks_resized[idx] > 0] = color[i]
-                mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 0.5, 0)
+                mask_overlay = cv2.addWeighted(mask_overlay, 1.0, color_overlay, 1, 0)
 
                 color_counter += 1
 
