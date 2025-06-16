@@ -31,7 +31,7 @@ input_folders = [
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
 ]
 
 # Define special folder and its labels folder (adjust paths as needed)
@@ -328,7 +328,7 @@ def copy_and_augment_files(images, labels, set_name):
             if image is None:
                 continue
             # Randomly select 1 or 2 augmentations, including 'flip'
-            num_augmented = random.randint(2, 4)
+            num_augmented = random.randint(2, 3) # 2 4
             chosen_augs = random.sample(list(augmentations.keys()) + ['flip'], num_augmented)
             for aug in chosen_augs:
                 augmented_image_name = generate_unique_name(image_path, suffix=aug)

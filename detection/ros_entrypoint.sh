@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
-# setup ros environment
-source "/opt/ros/noetic/setup.bash" --
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
-source /catkin_ws/devel/setup.bash
+# Source the ROS 2 setup
+source /opt/ros/humble/setup.bash
+
+# Source the overlay workspace, if it exists
+if [ -f /ros2_ws/install/setup.bash ]; then
+    source /ros2_ws/install/setup.bash
+fi
 
 exec "$@"
 

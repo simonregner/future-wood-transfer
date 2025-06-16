@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./detectron2",
+        "./mask2former/detectron2",
+        "./mask2former/Mask2Former"
+    ]
+}

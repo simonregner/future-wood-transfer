@@ -13,9 +13,9 @@ directory_paths = [
 # 4: road
 # 5: straight_turn
 # List of class numbers to change and the special number to replace them with.
-#numbers_to_change = ["2", "3", "5", "6"]  # Change these to the numbers you want to replace
-numbers_to_change = ["4"]  # Change these to the numbers you want to replace
-special_number = "5"                      # Change this to your desired special number
+numbers_to_change = ["2", "3", "5", "6"]  # Change these to the numbers you want to replace
+#numbers_to_change = ["4"]  # Change these to the numbers you want to replace
+special_number = "4"                      # Change this to your desired special number
 
 changed_files_count = 0  # Counter for the number of files that have been modified
 

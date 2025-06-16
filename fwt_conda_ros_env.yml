@@ -1,0 +1,23 @@
+name: fwt_ros
+channels:
+  - robostack
+  - robostack-staging
+  - conda-forge
+  - open3d-admin
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - numpy=1.21.6
+  - numba=0.55.1
+  - open3d=0.15.1
+  - pyquaternion
+  - jupyterlab
+  - jupyter_packaging
+  - ros-noetic-desktop
+  - ros-noetic-rosbridge-suite
+  - ros-noetic-cv-bridge
+  - ros-noetic-rosbag
+  - ros-noetic-rviz
+  - ros-noetic-roslaunch
+  - ros-noetic-roscpp

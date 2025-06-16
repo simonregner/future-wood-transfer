@@ -1,0 +1,21 @@
+# hyp_custom.yaml
+# base seg hyp — copy & paste all the defaults, then override:
+
+# LR schedule
+lr0: 0.0005        # initial LR (was 0.001)
+lrf: 0.01          # final LR (cosine end LR multiplier)
+
+# regularization
+weight_decay: 0.0005  # was 0.0001
+
+# segmentation loss weight
+seg: 0.7           # reduce the seg head’s relative weight (was 1.0)
+
+# augmentations
+mosaic: 0.7        # increase mosaic prob (was 0.5)
+mixup: 0.4         # increase mixup prob (was 0.3)
+hsv_h: 0.015       # color jitter, etc.
+hsv_s: 0.7
+hsv_v: 0.4
+
+# (the rest—flip, paste, scale, translate—keep your defaults)

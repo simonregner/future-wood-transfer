@@ -19,5 +19,5 @@ scale: 0.3046
 shear: 1.19433
 perspective: 0.0
 mosaic: 0.75094
-mixup: 0.1197
-copy_paste: 0.1
+mixup: 0.0
+copy_paste: 0.0

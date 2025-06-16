@@ -1,71 +1,72 @@
-# Use the official ROS Noetic desktop-full image as the base image
-FROM osrf/ros:noetic-desktop-full
+# 1. ROS 2 Humble on Ubuntu 22.04 (Python 3.10)
+FROM osrf/ros:humble-desktop
 
-# Install necessary packages and dependencies for CUDA installation
+# 2. Basic system and build tools
 RUN apt-get update && apt-get install -y \
-    python3.9 \
     python3-pip \
+    python3-colcon-common-extensions \
+    python3-vcstool \
     build-essential \
+    git \
     curl \
     nano \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python3.9 as the default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1  \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9
-
-# Add NVIDIA package repositories and key
-RUN curl -s -L https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb -o cuda-keyring.deb \
+# 3. CUDA 12.1 install
+RUN curl -s -L https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb -o cuda-keyring.deb \
     && dpkg -i cuda-keyring.deb \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     cuda-12-1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables for CUDA
 ENV CUDA_HOME=/usr/local/cuda-12.1
 ENV PATH=$CUDA_HOME/bin:$PATH
 
-# Install PyTorch with CUDA support
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# 4. PyTorch and Detectron2 (Mask2Former)
+RUN python3 -m pip install --upgrade pip
 
+# Use the specific torch/torchvision versions for CUDA 12.1 support and detectron2
+RUN python3 -m pip install torch==2.2.0 torchvision==0.17.0 torchaudio --index-url https://download.pytorch.org/whl/cu121
 RUN pip install ultralytics --no-deps
 
-# Install other Python dependencies for your script with specific versions
-COPY ../../requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt --ignore-installed
+# Install detectron2 (Mask2Former is supported in main branch)
+RUN python3 -m pip install opencv-python pycocotools
+RUN python3 -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
 
-# Copy your project (including the custom ROS package) into the container.
-# Assumes your custom package is under detection/ros_tools/road_lines_msg.
+# 5. Your project dependencies                                                                                                                                                            
+COPY requirements.txt /tmp/requirements.txt
+RUN python3 -m pip install -r /tmp/requirements.txt --ignore-installed
+
+RUN python3 -m pip install \
+    transforms3d
+RUN apt-get update && apt-get install -y \
+    ros-humble-tf-transformations \
+    ros-humble-rmw-cyclonedds-cpp
+
+# 6. Copy your project files into the container (adapt these lines to your layout)
 COPY ../.. /detection
+# If you have a ROS2 package, copy it to the workspace
+COPY ros_tools/road_lines_msg/ros2 /ros2_ws/src/road_lines_msg
 
-COPY ../../ros_tools/road_lines_msg /catkin_ws/src/road_lines_msg
+# 7. Build ROS 2 workspace with colcon (if you have ROS2 packages)
+RUN /bin/bash -c "cd /ros2_ws && source /opt/ros/humble/setup.bash && \
+    colcon build"
 
-
-RUN cd /catkin_ws && echo "catkin_make" && \
-    /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make && catkin_make install" && \
-    echo "source /catkin_ws/devel/setup.bash" >> /root/.bashrc
-    #echo "source /root/.bashrc"
-#RUN echo "catkin_make install"
-#RUN echo "source /catkin_ws/devel/setup.bash" >> /root/.bashrc
-
-COPY ../../ros_entrypoint.sh /ros_entrypoint.sh
-
-# Make sure the entrypoint script is executable
+# 8. Copy your entrypoint if you have one
+COPY ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh
 
+# 9. Set entrypoint and workdir
 ENTRYPOINT ["/ros_entrypoint.sh"]
-
-
-# Set the working directory for your application
 WORKDIR /detection
 
+# 10. Command to run your main script (adapt as needed)
+CMD ["/bin/bash"]
+#CMD ["python3", "main.py"]
 
-# Command to run your Python script
-#CMD ["bash"]
-CMD ["python", "main.py"]
 
-# Make the entrypoint script executable
-#RUN chmod +x entrypoint.sh
-
-#CMD ["./entrypoint.sh"]

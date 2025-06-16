@@ -90,13 +90,14 @@ roscore
 ### Second terminal 
 ```
 rosbag play bagfile --loop
+./bag_run.sh ../../../../Downloads/oak_sensor_data_2025-05-26-14-47-03.bag 
 ```
 
 ## Run python code 
 
 ### Third terminal 
 ```
-python road_detection.py
+sudo docker build -t future_wood_transfer . && sudo docker run --gpus all -it --rm --network host future_wood_transfer -- python main.py 13
 ```
 
 ### Docker Container
@@ -116,4 +117,22 @@ sudo docker save simonregner/future_wood_transfer:v3.5.1 | gzip -> /home/simon/D
 
 ```angular2html
 sudo docker load --input /home/simon/Downloads/future_wood_transfer_v3_5_1.tar.gz
+```
+
+# Run ROS1-2 Bridge
+
+```
+sudo docker build -t ros_bridge . & sudo docker run --rm -it --network host -e ROS_MASTER_URI=http://simon-linux:11311 ros_bridge
+```
+
+# Run Detection Docker
+
+```
+sudo docker build -t future_wood_transfer . && sudo docker run --gpus all --rm -it --network host -e ROS_MASTER_URI=http://simon-linux:11311 future_wood_transfer -- python3 main.py 13
+```
+
+# Play Rosbag
+
+```
+./bag_run.sh ../../../../Downloads/oak_sensor_data_2025-05-26-14-47-03.bag
 ```

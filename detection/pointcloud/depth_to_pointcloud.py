@@ -89,7 +89,6 @@ def depth_to_pointcloud_from_mask(depth_image, intrinsic_matrix, mask):
     Returns:
         o3d.geometry.PointCloud: Generated 3D point cloud from the masked region.
     """
-
     # Load depth image if a file path is provided
     if isinstance(depth_image, str):
         depth_image_loaded = cv2.imread(depth_image, cv2.IMREAD_UNCHANGED)
