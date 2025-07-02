@@ -1,9 +1,10 @@
-import torch
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
 
-class Mask2FormerWrapper:
-    def __init__(self, config_path=None, weights_path=None, device='cuda'):
+from  mask2former.config import add_maskformer2_config
+
+class Mask2FormerModelLoader:
+    def __init__(self):
         """
         Initialize the Mask2Former model.
         Args:
@@ -12,18 +13,36 @@ class Mask2FormerWrapper:
             device (str): 'cuda' or 'cpu'
         """
         self.cfg = get_cfg()
-        # Use default config if none provided
-        if config_path is None:
-            from detectron2.model_zoo import get_config_file, get_checkpoint_url
-            config_path = "COCO-InstanceSegmentation/mask2former_R50_bs16_50ep.yaml"
-            self.cfg.merge_from_file(get_config_file(config_path))
-            weights_path = get_checkpoint_url(config_path)
-        else:
-            self.cfg.merge_from_file(config_path)
-        if weights_path is not None:
-            self.cfg.MODEL.WEIGHTS = weights_path
+        add_maskformer2_config(self.cfg)
+
+        self.predictor = None
+
+
+
+    def load_model(self, config_path, model_path, device='cuda'):
+        """
+        Load the Mask2Former model.
+        Args:
+            config_path (str): Path to the config file.
+            weights_path (str): Path to model weights.
+            device (str): 'cuda' or 'cpu'
+        """
+        self.cfg.merge_from_file(config_path)
+
+        self.cfg.defrost()
+
+        self.cfg.MODEL.WEIGHTS = model_path
         self.cfg.MODEL.DEVICE = device
+        self.cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON = True
+        self.cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON = True
+        self.cfg.MODEL.MASK_FORMER.TEST.PANOPTIC_ON = True
+        self.cfg.MODEL.MASK_FORMER.TEST.SCORE_THRESH = 0.95
+
+        self.cfg.freeze()
+
         self.predictor = DefaultPredictor(self.cfg)
+
+    
 
     def predict(self, image):
         """
@@ -34,7 +53,24 @@ class Mask2FormerWrapper:
             dict: Prediction results.
         """
         outputs = self.predictor(image)
-        return outputs
+        # Get instances
+        instances = outputs["instances"]
+
+        # Masks as (N, H, W) tensor of bool
+        pred_masks = instances.pred_masks  # shape: [N, H, W], dtype: bool or uint8
+        pred_classes = instances.pred_classes  # shape: [N], dtype: int64
+
+        masks_list = []
+        classes_list = []
+
+        for mask, cls in zip(pred_masks, pred_classes):
+            # Convert mask to numpy array with 0s and 1s
+            mask_np = mask.cpu().numpy().astype('uint8')  # Convert bool -> int (0 or 1)
+            masks_list.append(mask_np)
+            classes_list.append(int(cls.cpu().numpy()))  # Ensure it's a Python int
+
+        print(f"Class IDs: {classes_list}")
+        return masks_list, classes_list
 
 # Example usage:
 # model = Mask2FormerWrapper()

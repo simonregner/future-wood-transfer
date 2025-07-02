@@ -5,24 +5,24 @@ import random
 import hashlib
 import json
 from tqdm import tqdm
-from PIL import Image
 
 # Configuration
 input_folders = [
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_1/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/images',
     '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
 ]
 
-output_root = '/home/simon/Documents/Master-Thesis/data/yolo_training_data'  # base output folder
+output_root = '/home/simon/Documents/Master-Thesis/data/coco_training_data'
 
 output_structure = {
     'train': {
@@ -53,7 +53,9 @@ categories = [
     "lane"
 ]
 
-# --- UTILITY FUNCTIONS ---
+ENABLE_AUGMENTATION = True
+
+# Utility functions
 def generate_unique_name(path, suffix=""):
     fname = os.path.basename(path)
     fhash = hashlib.md5(path.encode()).hexdigest()[:8]
@@ -79,25 +81,39 @@ def bbox_coco(polygon):
     min_y = min(y_coord)
     max_x = max(x_coord)
     max_y = max(y_coord)
-    width = max_x - min_x
-    height = max_y - min_y
-    return [min_x, min_y, width, height]
+    return [min_x, min_y, max_x - min_x, max_y - min_y]
 
 def area_calculator(polygon):
-    number_of_vertices = len(polygon)
-    sum_1 = 0.0
-    sum_2 = 0.0
-    for i in range(number_of_vertices - 1):
-        sum_1 += polygon[i][0] * polygon[i + 1][1]
-        sum_2 += polygon[i][1] * polygon[i + 1][0]
-    final_sum_1 = sum_1 + polygon[-1][0] * polygon[0][1]
-    final_sum_2 = sum_2 + polygon[0][0] * polygon[-1][1]
-    return abs((final_sum_1 - final_sum_2)) / 2
+    return 0.5 * abs(sum(polygon[i][0] * polygon[(i + 1) % len(polygon)][1] -
+                         polygon[(i + 1) % len(polygon)][0] * polygon[i][1]
+                         for i in range(len(polygon))))
 
 def creates_categories(categories):
     return [{"id": i+1, "name": cat, "supercategory": ""} for i, cat in enumerate(categories)]
 
-# --- COLLECT IMAGE-LABEL PAIRS ---
+# Augmentations
+def adjust_brightness(image, factor):
+    return cv2.convertScaleAbs(image, alpha=factor, beta=0)
+
+def add_gaussian_noise(image, std_dev=5):
+    noise = np.random.normal(0, std_dev, image.shape).astype(np.uint8)
+    return cv2.add(image, noise)
+
+def jitter_colors(image):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[:, :, 1] *= random.uniform(0.5, 1.5)
+    hsv[:, :, 2] *= random.uniform(0.5, 1.5)
+    hsv = np.clip(hsv, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+augmentations = {
+    'darker': lambda img: adjust_brightness(img, 0.5),
+    'brighter': lambda img: adjust_brightness(img, 1.5),
+    'noise': add_gaussian_noise,
+    'jitter': jitter_colors
+}
+
+# Collect data
 all_pairs = []
 for folder in input_folders:
     label_folder = os.path.join(os.path.dirname(folder), 'labels')
@@ -111,7 +127,7 @@ random.shuffle(all_pairs)
 split_idx = int(len(all_pairs) * TRAIN_SPLIT)
 split_data = {'train': all_pairs[:split_idx], 'val': all_pairs[split_idx:]}
 
-# --- MAIN PROCESSING: COPY, GENERATE MASKS, BUILD COCO JSON ---
+# Main processing
 def process_and_save(pairs, split):
     image_id = 1
     annotation_id = 1
@@ -123,6 +139,7 @@ def process_and_save(pairs, split):
         "images": [],
         "annotations": []
     }
+
     for img_path, label_path in tqdm(pairs, desc=f"Processing {split}"):
         img = cv2.imread(img_path)
         if img is None:
@@ -131,82 +148,84 @@ def process_and_save(pairs, split):
         h, w = img.shape[:2]
         base_name = generate_unique_name(img_path)
 
-        # Save image
-        img_out = os.path.join(output_structure[split]['images'], base_name)
-        cv2.imwrite(img_out, img)
+        def save_data(img_variant, variant_name):
+            nonlocal image_id, annotation_id, segment_id
+            out_img_path = os.path.join(output_structure[split]['images'], variant_name)
+            cv2.imwrite(out_img_path, img_variant)
 
-        # Create masks
-        panoptic_mask = np.zeros((h, w, 3), dtype=np.uint8)
-        semseg_mask = np.zeros((h, w), dtype=np.uint8)
-        polygons_by_class = {}
+            panoptic_mask = np.zeros((h, w, 3), dtype=np.uint8)
+            semseg_mask = np.zeros((h, w), dtype=np.uint8)
+            segments_info = []
+            polygons_by_class = {}
 
-        # Load label and parse polygons
-        with open(label_path, 'r') as f:
-            lines = f.readlines()
-        for line in lines:
-            class_id, polygon = parse_yolo_polygon(line, w, h)
-            if polygon is not None:
-                polygons_by_class.setdefault(class_id, []).append(polygon)
+            with open(label_path, 'r') as f:
+                lines = f.readlines()
+            for line in lines:
+                class_id, polygon = parse_yolo_polygon(line, w, h)
+                if polygon is not None:
+                    polygons_by_class.setdefault(class_id, []).append(polygon)
 
-        segments_info = []
-        for class_id, polygons in polygons_by_class.items():
-            for polygon in polygons:
-                color = [segment_id % 256, (segment_id >> 8) % 256, (segment_id >> 16) % 256]
-                poly_np = np.array([polygon], dtype=np.int32)
-                cv2.fillPoly(panoptic_mask, poly_np, color)
-                cv2.fillPoly(semseg_mask, poly_np, class_id)
-                x, y, w_box, h_box = cv2.boundingRect(poly_np)
-                area = cv2.contourArea(poly_np)
-                segments_info.append({
-                    "id": segment_id,
-                    "category_id": class_id,
-                    "area": float(area),
-                    "bbox": [x, y, w_box, h_box],
-                    "iscrowd": 0
-                })
-                segment_id += 1
+            for class_id, polygons in polygons_by_class.items():
+                for polygon in polygons:
+                    color = [segment_id % 256, (segment_id >> 8) % 256, (segment_id >> 16) % 256]
+                    poly_np = np.array([polygon], dtype=np.int32)
+                    cv2.fillPoly(panoptic_mask, poly_np, color)
+                    cv2.fillPoly(semseg_mask, poly_np, class_id)
+                    bbox = bbox_coco(polygon)
+                    area = area_calculator(polygon)
+                    segments_info.append({
+                        "id": segment_id,
+                        "category_id": class_id,
+                        "area": float(area),
+                        "bbox": bbox,
+                        "iscrowd": 0
+                    })
+                    segment_id += 1
 
-        # Save masks
-        pan_mask_name = base_name.replace(".jpg", ".png").replace(".jpeg", ".png")
-        pan_mask_path = os.path.join(output_structure[split]['panoptic'], pan_mask_name)
-        semseg_mask_path = os.path.join(output_structure[split]['semseg'], pan_mask_name)
-        cv2.imwrite(pan_mask_path, panoptic_mask)
-        cv2.imwrite(semseg_mask_path, semseg_mask)
+            pan_mask_name = variant_name.replace(".jpg", ".png").replace(".jpeg", ".png")
+            cv2.imwrite(os.path.join(output_structure[split]['panoptic'], pan_mask_name), panoptic_mask)
+            cv2.imwrite(os.path.join(output_structure[split]['semseg'], pan_mask_name), semseg_mask)
 
-        # Save image entry
-        coco_json["images"].append({
-            "id": image_id,
-            "width": w,
-            "height": h,
-            "file_name": os.path.basename(img_out)
-        })
+            coco_json["images"].append({
+                "id": image_id,
+                "width": w,
+                "height": h,
+                "file_name": os.path.basename(out_img_path)
+            })
 
-        # Save annotation entry: one entry per mask
-        # You can choose: one annotation per instance, or per image (panoptic-style)
-        for class_id, polygons in polygons_by_class.items():
-            for polygon in polygons:
-                if len(polygon) < 3:
-                    continue
+            for seg in segments_info:
                 coco_json["annotations"].append({
                     "id": annotation_id,
                     "image_id": image_id,
-                    "category_id": class_id + 1,  # 1-based
-                    "segmentation": [[x for pt in polygon for x in pt]],
-                    "area": area_calculator(polygon),
-                    "bbox": bbox_coco(polygon),
+                    "category_id": seg["category_id"] + 1,
+                    "segmentation": [],  # optional: polygons
+                    "area": seg["area"],
+                    "bbox": seg["bbox"],
                     "iscrowd": 0,
-                    "file_name": pan_mask_name  # <- The mask image filename!
+                    "file_name": pan_mask_name
                 })
                 annotation_id += 1
 
-        image_id += 1
+            image_id += 1
 
-    # Save the COCO JSON file
+        # Save original
+        save_data(img, base_name)
+
+        # Save augmented
+        if ENABLE_AUGMENTATION:
+            num_augs = random.randint(1, 2)
+            chosen_augs = random.sample(list(augmentations.keys()), num_augs)
+            for aug_name in chosen_augs:
+                aug_img = augmentations[aug_name](img)
+                aug_base_name = generate_unique_name(img_path, suffix=aug_name)
+                save_data(aug_img, aug_base_name)
+
+    # Save COCO JSON
     with open(os.path.join(output_root, f'annotations/instances_{split}.json'), 'w') as f:
         json.dump(coco_json, f, indent=2)
 
-# --- RUN ---
+# Run
 process_and_save(split_data['train'], 'train')
 process_and_save(split_data['val'], 'val')
 
-print("✅ All done! Images and masks are saved. COCO annotation includes the mask filenames.")
+print("✅ All done! Images, masks, and COCO annotations are saved.")

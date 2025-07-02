@@ -1,17 +1,16 @@
-# Yolo Detection Model Requirements
-
-#numpy==1.24.4
-#opencv-python==4.8.0.76
-#open3d==0.15.2
-#scikit-learn==1.1.3
-#scikit-image
-#sknw
-
-
-# Mask2Former Requirements2
-numpy==1.24.4
+# Humble and yolo
+ultralytics
 opencv-python==4.8.0.76
 open3d==0.16.0
 scikit-learn==1.1.3
 scikit-image
 sknw
+colorlog
+cython
+scipy==1.11.4
+shapely
+timm
+h5py
+submitit
+setuptools<=65.0.0
+wheel

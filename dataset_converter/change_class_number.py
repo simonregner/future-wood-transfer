@@ -2,8 +2,24 @@ import os
 
 # List of directory paths containing the text files for each image
 directory_paths = [
-    "/home/simon/Documents/Master-Thesis/data/yolo_training_data/train/labels/",
-    "/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/labels/"
+    #"/home/simon/Documents/Master-Thesis/data/yolo_training_data/train/labels/",
+    #"/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/labels/"
+
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/labels',
+    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_1/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/labels',
+    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/labels',
+
     # Add more paths as needed
 ]
 # 0: background

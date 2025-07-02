@@ -1,11 +1,13 @@
 import json
 
-annotation_directory = r"/home/simon/Documents/Master-Thesis/data/yolo_training_data_tuning_yolo/train/labels"
-images_directory = r"/home/simon/Documents/Master-Thesis/data/yolo_training_data_tuning_yolo/train/images"
+annotation_directory = r"/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/labels"
+images_directory = r"/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/images"
 
 import os
 from PIL import Image
 import json
+
+annotation_it = 1
 
 
 def creates_categories(categories):
@@ -83,6 +85,7 @@ def area_calculator(list_of_value):
 
 
 def creation_json_yolo_to_coco(images_directory, annotation_directory, categories, singleormultiple):
+    annotation_it = 1
     codified_categories = creates_categories(categories)
     if singleormultiple == "m":
         for file in os.listdir(images_directory):
@@ -114,8 +117,8 @@ def creation_json_yolo_to_coco(images_directory, annotation_directory, categorie
                 annotation["segmentation"] = [[x for t in point_in_coco_format for x in t]]
                 annotation["bbox"] = bbox_coco(point_in_coco_format)
                 annotation["area"] = area_calculator(list_of_value=point_in_coco_format)
-                annotation["id"] = id_annotation
-                id_annotation += 1
+                annotation["id"] = annotation_it
+                annotation_it += 1
                 base_json["annotations"].append(annotation)
 
             with open(f"{annotation_file[:-4]}.json", "w") as outfile:
@@ -151,8 +154,8 @@ def creation_json_yolo_to_coco(images_directory, annotation_directory, categorie
                 annotation["segmentation"] = [[x for t in point_in_coco_format for x in t]]
                 annotation["bbox"] = bbox_coco(point_in_coco_format)
                 annotation["area"] = area_calculator(list_of_value=point_in_coco_format)
-                annotation["id"] = id_annotation
-                id_annotation += 1
+                annotation["id"] = annotation_it
+                annotation_it += 1
                 base_json["annotations"].append(annotation)
             image_id += 1
         name_file = input("How do you want to call the final file?")

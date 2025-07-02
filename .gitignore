@@ -171,3 +171,7 @@ yolo_V11/*.pt
 
 *jpg
 *png
+
+*.pth 
+*.pt
+

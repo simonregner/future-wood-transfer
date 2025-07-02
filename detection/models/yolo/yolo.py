@@ -38,7 +38,11 @@ class YOLOModelLoader:
         if cls.model is None:
             raise ValueError("Model is not loaded. Please call load_model() first.")
         if type(image) is not str:
-            image = np.array(image, dtype=np.uint8)
+            image = np.array(image, copy=False, dtype=np.uint8)
+
+        print(f"Running inference on image with shape: {image.shape} and dtype: {image.dtype}")
+        image = np.asarray(image).copy()
+        assert isinstance(image, np.ndarray)
         results = cls.model.predict(source=image, conf=conf, retina_masks=True)#,  classes=[7])#, agnostic_nms=True, retina_masks=True)
 
         if len(results[0].boxes) == 0:

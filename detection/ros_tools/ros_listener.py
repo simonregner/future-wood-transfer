@@ -60,7 +60,7 @@ class TimeSyncListener(Node):
         self.right_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path')
         self.left_path_publisher_2 = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path_2')
         self.right_path_publisher_2 = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path_2')
-        self.left_road_lines_publisher = ros_road_lines_publisher.RoadLinesPublisher(topic_name='/road/road_lines_topic')
+        self.road_lines_publisher = ros_road_lines_publisher.RoadLinesPublisher(topic_name='/road/road_lines_topic')
         self.mask_image_publisher = ros_mask_publisher.MaskPublisher(topic_name='/ml/mask_image')
         self.point_cloud_publisher = ros_pointcloud_publisher.PointcloudPublisher(topic_name='/ml/pointcloud')
 
@@ -200,6 +200,7 @@ class TimeSyncListener(Node):
                 points_line = path_utils.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
                 paths.append(points_line)
             else:
+                continue
                 road_masks.append(mask)
 
         path_pairs, path_np_extanded = boundary_identification_utils.find_left_to_right_pairs(np.asarray(paths), masks, road_masks, road_width=self.road_width)
@@ -226,7 +227,7 @@ class TimeSyncListener(Node):
             self.left_path_publisher_2.publish_path([], frame_id)
             self.right_path_publisher_2.publish_path([], frame_id)
 
-        self.left_road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
+        self.road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
         self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, road_masks, path_pairs, frame_id, yolo_mask=False)
 
         # Optionally publish pointcloud

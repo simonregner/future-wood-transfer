@@ -128,7 +128,7 @@ sudo docker build -t ros_bridge . & sudo docker run --rm -it --network host -e R
 # Run Detection Docker
 
 ```
-sudo docker build -t future_wood_transfer . && sudo docker run --gpus all --rm -it --network host -e ROS_MASTER_URI=http://simon-linux:11311 future_wood_transfer -- python3 main.py 13
+sudo docker build -t future_wood_transfer . && sudo docker run --gpus all --rm -it --network host -e ROS_MASTER_URI=http://simon-linux:11311 future_wood_transfer -- python3 main.py 13 yolo
 ```
 
 # Play Rosbag
