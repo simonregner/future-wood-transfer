@@ -8,7 +8,7 @@ from ultralytics import YOLO
 save_mode = "original"
 
 # --- CONFIGURATION ---
-image_folder = "../../SVO/MM_ForestRoads_02_2/old_images"  # 👈 Set this to your folder
+image_folder = "../../ROSBAG_images/Seetaleralps/old_images"  # 👈 Set this to your folder
 confidence_threshold = 0.9
 desired_class_ids = [2, 3, 4, 5]  # 👈 Set class IDs you care about
 
@@ -20,7 +20,7 @@ os.makedirs(label_folder, exist_ok=True)
 os.makedirs(filtered_image_folder, exist_ok=True)
 
 # Load YOLO segmentation model
-model = YOLO("runs/segment/MM_Dataset/weights/best.pt")  # 👈 Change to your actual model path
+model = YOLO("runs/segment/model_test_v11_d0.5_freeze10_400epochs/weights/best.pt")  # 👈 Change to your actual model path
 
 def smooth_polygon(poly, smoothing_factor=0.00001):
     if len(poly) < 4:

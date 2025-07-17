@@ -27,35 +27,89 @@ import scipy.ndimage as nd
 last_processed_time = 0  # use float seconds for timing in ROS2
 
 class TimeSyncListener(Node):
-    def __init__(self, model_loader, max_depth=13):
+    """
+    A ROS2 node that synchronizes RGB and depth images, performs model inference to detect paths and road features,
+    and publishes results such as paths, masks, and pointclouds.
+
+    Attributes:
+        model_loader: Object that provides the `.predict()` method to get segmentation masks and classes.
+        max_depth (float): Maximum depth distance in meters to consider.
+        computation_type (int): Type of computation (0 = all, 1 = only road lines).
+    """
+    def __init__(self, model_loader, args):
+        """
+        Initializes the TimeSyncListener node, sets up subscribers, publishers, and loads the camera intrinsics.
+
+        Args:
+            model_loader: A model object capable of performing inference on RGB images.
+            max_depth (float): Maximum depth value to consider in meters (default is 13).
+            computation_type (int): Processing mode; 0 = all, 1 = road lines only.
+        """
         super().__init__('time_sync_listener')
 
+        self.get_logger().info(
+            f"Start initialization of TimeSyncListener ..."
+        )
+
+        self.args = args
+
         self.model_loader = model_loader
-        self.max_depth = max_depth
+        self.max_depth = self.args.max_depth
 
         self.intrinsic_matrix = None
-        self.camera_info_topic = "/hazard_front/stereo_node_front/rgb/camera_info"
+        self.camera_info_topic = self.args.topic_camera_info
         self.bridge = CvBridge()
-        self.rgb_image_type = None
+
+        self.rgb_image_type = Image
         self.pointcloud_previous = None
-        self.timer = [200000000, 200000000, 200000000, 200000000, 200000000]  # in nanoseconds
+        self.timers_subscriber = 200000000  # in nanoseconds
         self.road_width = 2
 
         # Subscribers
-        self.image_sub = Subscriber(self, Image, '/hazard_front/stereo_node_front/rgb')
-        self.depth_sub = Subscriber(self, Image, '/hazard_front/stereo_node_front/depth')
-        self.imu_sub = Subscriber(self, Imu, '/hazard_front/stereo_node_front/imu/data')
+        self.get_logger().info(
+            f"Initialization of Subscribers and Time Synchronization"
+        )
+        if self.args.rgb_image_type == "Image":
+            self.get_logger().info(
+                f"Using raw RGB image topic: {self.args.topic_rgb}"
+            )
+            self.rgb_image_type = Image#
+        else:
+            self.get_logger().info(
+                f"Using compressed RGB image topic: {self.args.topic_rgb}"
+            )
+            self.rgb_image_type = CompressedImage
 
 
+        self.image_sub = Subscriber(self, self.rgb_image_type, self.args.topic_rgb)
+        self.depth_sub = Subscriber(self, Image, self.args.topic_depth)
 
         # ---- Message Filter Synchronization ----
-        self.ts = TimeSynchronizer(
-            [self.image_sub, self.depth_sub],
-            queue_size=10,
-        )
-        self.ts.registerCallback(self.callback)
+        if self.args.time_syncronizer:
+            
+            self.ts = TimeSynchronizer(
+                [self.image_sub, self.depth_sub],
+                queue_size=self.args.time_sync_queue_size,
+            )
+            self.ts.registerCallback(self.callback)
+            self.get_logger().info(
+                f"Init TimeSynchronizer with queue size: {self.args.time_sync_queue_size}"
+            )
+        else:
+            self.ts = ApproximateTimeSynchronizer(
+                [self.image_sub, self.depth_sub],
+                self.args.time_sync_queue_size,
+                self.args.sync_max_delay,  # seconds
+            )
+            self.ts.registerCallback(self.callback)
+            self.get_logger().info(
+                f"Init ApproximateTimeSynchronizer with queue size: {self.args.time_sync_queue_size} and max delay: {self.args.sync_max_delay} seconds"
+            )
 
-        # Publishers
+        # Initialize Publisher
+        self.get_logger().info(
+            f"Initialization of Publishers"
+        )
         self.left_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path')
         self.right_path_publisher = ros_path_publisher.SinglePathPublisher(topic_name='/path/right_path')
         self.left_path_publisher_2 = ros_path_publisher.SinglePathPublisher(topic_name='/path/left_path_2')
@@ -63,10 +117,6 @@ class TimeSyncListener(Node):
         self.road_lines_publisher = ros_road_lines_publisher.RoadLinesPublisher(topic_name='/road/road_lines_topic')
         self.mask_image_publisher = ros_mask_publisher.MaskPublisher(topic_name='/ml/mask_image')
         self.point_cloud_publisher = ros_pointcloud_publisher.PointcloudPublisher(topic_name='/ml/pointcloud')
-
-        self.get_logger().info(
-            f"TimeSyncListener initialized and running with max_depth {self.max_depth}m"
-        )
 
         # Async CameraInfo initialization
         self._camera_info_received = False
@@ -77,60 +127,37 @@ class TimeSyncListener(Node):
             10
         )
 
-    def get_available_image_topic(self):
-        # Use rclpy API to discover topics
-        # (There is no direct equivalent of rospy.get_published_topics in rclpy, but you can use get_topic_names_and_types)
-        available_topics = [topic for topic, _ in self.get_topic_names_and_types()]
-        compressed_topic = "/hazard_front/stereo_node_front/rgb/compressed"
-        uncompressed_topic = "/hazard_front/stereo_node_front/rgb"
+        self.get_logger().info(
+            f"TimeSyncListener initialized and running with max_depth {self.max_depth}m"
+        )
+        self.get_logger().info(
+            f"Waiting for Camera Intrinsic matrix from topic: {self.camera_info_topic}"
+        )
 
-        if compressed_topic in available_topics:
-            self.get_logger().info(f"Topic found: {compressed_topic}")
-            self.image_sub = Subscriber(self, CompressedImage, compressed_topic)
-            self.rgb_image_type = CompressedImage
-            return
-        elif uncompressed_topic in available_topics:
-            self.get_logger().info(f"Topic found: {uncompressed_topic}")
-            self.image_sub = Subscriber(self, Image, uncompressed_topic)
-            self.rgb_image_type = Image
-            return
-        else:
-            self.get_logger().error("Neither compressed nor uncompressed image topic is available!")
-            rclpy.shutdown()
-            return
-
-    def _camera_info_callback(self, msg):
-        self.intrinsic_matrix = np.array(msg.k).reshape(3, 3)
-        self._camera_info_received = True
-        self.get_logger().info(f"CameraInfo received. Intrinsic matrix: {self.intrinsic_matrix}")
-        # Once received, unsubscribe
-        self.destroy_subscription(self._camera_info_subscription)
-        self._camera_info_subscription = None
 
     def callback(self, image_msg, depth_msg):
+        """
+        Callback for synchronized RGB and depth images. Performs image conversion, inference,
+        mask filtering, road/path detection, and publishing to various ROS topics.
+
+        Args:
+            image_msg (sensor_msgs.msg.Image or CompressedImage): The RGB image message.
+            depth_msg (sensor_msgs.msg.Image): The depth image message.
+        """
         global last_processed_time
         now = self.get_clock().now().nanoseconds
 
         # Replace ROS1 rospy.Duration with nanoseconds math
-        wait_duration = int(sum(self.timer) / 5) + 50000000  # nanoseconds
+        wait_duration = int(self.timers_subscriber) + 50000000  # nanoseconds
         if (now - last_processed_time) < wait_duration:
             return
         last_processed_time = now
-        #start_time = timer_utils.start_timer()
+        start_time = timer_utils.start_timer()
 
         # Initialize intrinsic matrix and image type if not already done
         if self.intrinsic_matrix is None:
             if not self._camera_info_received:
-                self.get_logger().warn("Waiting for CameraInfo message...")
-            return
-
-        if self.rgb_image_type is None:
-            self.get_available_image_topic()
-            return
-
-        # Validate timestamps for synchronization
-        if image_msg.header.stamp != depth_msg.header.stamp:
-            self.get_logger().info("NO synchronized messages received")
+                self.get_logger().warn(f"Waiting for CameraInfo message, retry at next callback...")
             return
 
         frame_id = image_msg.header.frame_id
@@ -196,8 +223,10 @@ class TimeSyncListener(Node):
                     degree = 2
                 else:
                     degree = 2
+
                 x_fit, y_fit, z_fit = path_utils.calculate_fitted_line(points, degree, t_fit=50)
-                points_line = path_utils.ensure_first_point_closest_to_origin(np.column_stack((x_fit, y_fit, z_fit)))
+
+                points_line = path_utils.ensure_first_point_closest_to_origin(np.stack([x_fit, y_fit, z_fit], axis=1))
                 paths.append(points_line)
             else:
                 continue
@@ -215,37 +244,41 @@ class TimeSyncListener(Node):
         new_road_width = road_utils.calculate_road_width(self.road_width, left_paths, right_paths)
         if new_road_width is None:
             return
-        self.road_width = new_road_width
+        #self.road_width = 2 # new_road_width
+        
+        self.road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
 
-        # --- Publish to ROS2 ---
-        self.left_path_publisher.publish_path(left_paths[0], frame_id)
-        self.right_path_publisher.publish_path(right_paths[0], frame_id)
-        if len(left_paths) > 1:
-            self.left_path_publisher_2.publish_path(left_paths[1], frame_id)
-            self.right_path_publisher_2.publish_path(right_paths[1], frame_id)
-        else:
+        if 'mask' in self.args.computation_type:
+            self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, road_masks, path_pairs, frame_id, yolo_mask=False)
+
+        if 'path' in self.args.computation_type:
+            self.left_path_publisher.publish_path(left_paths[0], frame_id)
+            self.right_path_publisher.publish_path(right_paths[0], frame_id)
+        
             self.left_path_publisher_2.publish_path([], frame_id)
             self.right_path_publisher_2.publish_path([], frame_id)
 
-        self.road_lines_publisher.publish_path(left_paths, right_paths, frame_id, time_stamp)
-        self.mask_image_publisher.publish_yolo_mask(rgb_image, masks, road_masks, path_pairs, frame_id, yolo_mask=False)
-
-        # Optionally publish pointcloud
-        if False:
+        if 'pointcloud' in self.args.computation_type:
             from detection.pointcloud.create_pointcloud import create_pointcloud
             pointcloud = create_pointcloud(depth_image, self.intrinsic_matrix)
             self.point_cloud_publisher.publish_pointcloud(pointcloud.points, [], [], frame_id)
 
-        #self.timers = timer_utils.end_timer(self.timers, start_time)
+        self.timers_subscriber = timer_utils.end_timer(self.timers_subscriber, start_time)
+
+    def _camera_info_callback(self, msg):
+        """
+        Callback to handle incoming CameraInfo messages and extract the intrinsic matrix.
+
+        Args:
+            msg (sensor_msgs.msg.CameraInfo): The message containing camera calibration data.
+        """
+        self.intrinsic_matrix = np.array(msg.k).reshape(3, 3)
+        self._camera_info_received = True
+        self.get_logger().info(f"CameraInfo received. Intrinsic matrix: {self.intrinsic_matrix}")
+        # Once received, unsubscribe
+        self.destroy_subscription(self._camera_info_subscription)
+        self._camera_info_subscription = None
 
     def run(self, distance):
         self.max_depth = float(distance)
         rclpy.spin(self)
-
-# USAGE:
-# rclpy.init()
-# model_loader = ... # your ML model class instance
-# node = TimeSyncListener(model_loader)
-# node.run(distance=13)
-# node.destroy_node()
-# rclpy.shutdown()

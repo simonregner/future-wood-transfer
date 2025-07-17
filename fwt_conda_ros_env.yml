@@ -1,4 +1,4 @@
-name: fwt_ros
+name: fwt_ros1
 channels:
   - robostack
   - robostack-staging

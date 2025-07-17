@@ -100,6 +100,10 @@ rosbag play bagfile --loop
 sudo docker build -t future_wood_transfer . && sudo docker run --gpus all -it --rm --network host future_wood_transfer -- python main.py 13
 ```
 
+```
+sudo docker build -t future_wood_transfer . && sudo docker run --gpus all --rm -it --network host -v ../yolo_V11/runs/segment/model_test_v12_d0.2_freeze01/weights/best.pt:/detection/models/yolo/test.pt future_wood_transfer -- python3 main.py --distance 13 --model_type yolo --model_path /detection/models/yolo/test.pt --computation_type mask path
+```
+
 ### Docker Container
 
 # Push Docker
@@ -115,7 +119,7 @@ sudo docker image push simonregner/future_wood_transfer:v1.5
 sudo docker save simonregner/future_wood_transfer:v3.5.1 | gzip -> /home/simon/Downloads/future_wood_transfer_v3_5_1.tar.gz
 ```
 
-```angular2html
+```
 sudo docker load --input /home/simon/Downloads/future_wood_transfer_v3_5_1.tar.gz
 ```
 
@@ -135,4 +139,8 @@ sudo docker build -t future_wood_transfer . && sudo docker run --gpus all --rm -
 
 ```
 ./bag_run.sh ../../../../Downloads/oak_sensor_data_2025-05-26-14-47-03.bag
+```
+
+```
+sudo docker build -t rosbag_play . && sudo docker run --rm -v ../../../../Downloads/fwt_2025-04-08-16-05-36_0.bag:/rosbags/file.bag rosbag_play /rosbags/file.bag
 ```

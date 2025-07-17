@@ -1,0 +1,24 @@
+digraph G {
+"FP_POI" -> "FP_IMUH"[label=" Broadcaster: default_authority\nAverage rate: 199.449\nBuffer length: 5.054\nMost recent transform: 1751373733.178431\nOldest transform: 1751373728.1245\n"];
+"FP_ECEF" -> "FP_POI"[label=" Broadcaster: default_authority\nAverage rate: 10.204\nBuffer length: 4.9\nMost recent transform: 1751373733.1\nOldest transform: 1751373728.2\n"];
+"FP_VRTK" -> "FP_CAM"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"FP_POI" -> "FP_VRTK"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"FP_ECEF" -> "FP_ENU0"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"FP_ENU0" -> "map"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "front_left_steering_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"odom" -> "base_link"[label=" Broadcaster: default_authority\nAverage rate: 10.909\nBuffer length: 1.1\nMost recent transform: 1751373733.1\nOldest transform: 1751373732.0\n"];
+"front_left_steering_link" -> "front_left_wheel_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"base_link" -> "front_right_steering_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"front_right_steering_link" -> "front_right_wheel_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"base_link" -> "rear_left_steering_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"rear_left_steering_link" -> "rear_left_wheel_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"base_link" -> "rear_right_steering_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"rear_right_steering_link" -> "rear_right_wheel_link"[label=" Broadcaster: default_authority\nAverage rate: 16.868\nBuffer length: 4.98\nMost recent transform: 1751373733.148575\nOldest transform: 1751373728.168621\n"];
+"FP_POI" -> "FP_POISH"[label=" Broadcaster: default_authority\nAverage rate: 10.204\nBuffer length: 4.9\nMost recent transform: 1751373733.1\nOldest transform: 1751373728.2\n"];
+"map" -> "odom"[label=" Broadcaster: default_authority\nAverage rate: 10.204\nBuffer length: 4.9\nMost recent transform: 1751373733.1\nOldest transform: 1751373728.2\n"];
+"odom" -> "vrtk_link"[label=" Broadcaster: default_authority\nAverage rate: 10.204\nBuffer length: 4.9\nMost recent transform: 1751373733.1\nOldest transform: 1751373728.2\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1751907408.0012107"[ shape=plaintext ] ;
+}->"FP_ECEF";
+}

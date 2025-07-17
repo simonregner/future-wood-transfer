@@ -8,6 +8,23 @@ from itertools import combinations
 from scipy.spatial.distance import directed_hausdorff
 
 def find_left_to_right_pairs(boundaries, masks, road_masks, road_width=2.0, logger=None):
+    """
+    Pairs boundaries into left-right pairs based on direction, distance, and shape similarity.
+    Generates synthetic boundaries if a boundary has no pair.
+
+    Args:
+        boundaries (List[np.ndarray]): List of arrays of 3D points, each representing a boundary.
+        masks (List[np.ndarray]): List of binary masks corresponding to each boundary.
+        road_masks (List[np.ndarray]): List of masks representing road regions (not used in current logic).
+        road_width (float, optional): Offset distance for synthetic boundary generation. Defaults to 2.0.
+        logger (Optional[object]): Logger for debug output. If None, no logging is performed.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: 
+            - Array of index pairs (left, right).
+            - Updated boundaries, including synthetic boundaries if added.
+    """
+    
     n = len(boundaries)
     vectors = [direction_vector(b) for b in boundaries]
     pairs = list(combinations(range(n), 2))
@@ -72,7 +89,16 @@ def find_left_to_right_pairs(boundaries, masks, road_masks, road_width=2.0, logg
 
 
 def direction_vector(boundary: np.array):
-    """Computes normalized XZ direction vector."""
+    """
+    Computes the normalized XZ direction vector from the first to the last point of a boundary.
+
+    Args:
+        boundary (np.ndarray): Array of 3D points.
+
+    Returns:
+        np.ndarray: Normalized 2D direction vector [x, z]. Returns zeros if norm is zero or too few points.
+    """
+     
     if boundary.size < 3:
         return np.zeros(3)
 
@@ -84,9 +110,31 @@ def direction_vector(boundary: np.array):
     return (vec / norm) if norm > 0 else np.zeros(3)
 
 def center_point(boundary):
+    """
+    Computes the geometric center (mean point) of a boundary.
+
+    Args:
+        boundary (np.ndarray): Array of 3D points.
+
+    Returns:
+        np.ndarray: Center point as [x, y, z].
+    """
+
     return np.mean(np.array(boundary), axis=0)
 
 def is_first_left_of_second(boundary_a, boundary_b, direction):
+    """
+    Determines if boundary_a is to the left of boundary_b relative to a direction vector.
+
+    Args:
+        boundary_a (np.ndarray): First boundary points.
+        boundary_b (np.ndarray): Second boundary points.
+        direction (np.ndarray): Reference direction vector.
+
+    Returns:
+        bool: True if boundary_a is to the left of boundary_b, False otherwise.
+    """
+
     ca = center_point(boundary_a)
     cb = center_point(boundary_b)
     vec_between = cb - ca
@@ -94,6 +142,17 @@ def is_first_left_of_second(boundary_a, boundary_b, direction):
     return cross[2] > 0
 
 def cosine_similarity(a, b):
+    """
+    Computes the cosine similarity between two vectors.
+
+    Args:
+        a (np.ndarray): First vector.
+        b (np.ndarray): Second vector.
+
+    Returns:
+        float: Cosine similarity score between -1 and 1.
+    """
+
     if a is None or b is None:
         return 0
     a = np.array(a)
@@ -101,11 +160,34 @@ def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 def distance_between_centers(points_a, points_b):
+    """
+    Computes the Euclidean distance between centers of two sets of points.
+
+    Args:
+        points_a (np.ndarray): First set of points.
+        points_b (np.ndarray): Second set of points.
+
+    Returns:
+        float: Distance between centers.
+    """
+
     center_a = np.mean(points_a, axis=0)
     center_b = np.mean(points_b, axis=0)
     return np.linalg.norm(center_a - center_b)
 
 def is_overlap_below_threshold(mask1, mask2, threshold=0.4):
+    """
+    Checks if the overlap between two masks exceeds a threshold.
+
+    Args:
+        mask1 (np.ndarray): First binary mask.
+        mask2 (np.ndarray): Second binary mask.
+        threshold (float, optional): Overlap threshold. Defaults to 0.4.
+
+    Returns:
+        bool: True if overlap exceeds threshold, False otherwise.
+    """
+
     intersection = np.logical_and(mask1, mask2).sum()
     mask1_area = mask1.sum()
     mask2_area = mask2.sum()
@@ -116,27 +198,69 @@ def is_overlap_below_threshold(mask1, mask2, threshold=0.4):
     return overlap_ratio_1 > 0 or overlap_ratio_2 > 0
 
 def generate_parallel_line(points, parallel_direction=-1, offset_distance=3.0):
+    """
+    Generates a parallel 3D line offset from the original points (offset in XZ plane).
+
+    Args:
+        points (np.ndarray): Array of 3D points (N, 3).
+        parallel_direction (int): +1 for right, -1 for left. Defaults to -1.
+        offset_distance (float): Offset distance. Defaults to 3.0.
+
+    Returns:
+        np.ndarray: New set of points forming the parallel line (N, 3).
+    """
+
     points_xz = points[:, [0, 2]]
     y_values = points[:, 1]
-    normals = []
-    for i in range(len(points_xz)):
-        if i == len(points_xz) - 1:
-            direction = points_xz[i] - points_xz[i - 1]
+    n_points = len(points_xz)
+
+    directions = np.zeros((n_points - 1, 2))
+    normals = np.zeros((n_points, 2))
+
+    # Compute segment directions
+    for i in range(n_points - 1):
+        vec = points_xz[i + 1] - points_xz[i]
+        vec /= np.linalg.norm(vec)
+        directions[i] = vec
+
+    # Compute normals (average of adjacent directions)
+    for i in range(n_points):
+        if i == 0:
+            dir_avg = directions[0]
+        elif i == n_points - 1:
+            dir_avg = directions[-1]
         else:
-            direction = points_xz[i + 1] - points_xz[i]
-        direction = direction / np.linalg.norm(direction)
-        normal = np.array([parallel_direction * direction[1], direction[0]])
-        normals.append(normal)
-    normals = np.array(normals)
+            dir_avg = directions[i - 1] + directions[i]
+            dir_avg /= np.linalg.norm(dir_avg)
+
+        normal = np.array([parallel_direction * dir_avg[1], -parallel_direction * dir_avg[0]])
+        normals[i] = normal
+
+    # Apply offset
     points_xz_parallel = points_xz + normals * offset_distance
-    return np.stack((points_xz_parallel[:, 0], y_values, points_xz_parallel[:, 1]), axis=1)
+
+    # Reconstruct full 3D points
+    parallel_points = np.stack((points_xz_parallel[:, 0], y_values, points_xz_parallel[:, 1]), axis=1)
+
+    return parallel_points
 
 def normalize_path(path):
+    """
+    Normalizes a path by centering it at the origin.
+
+    Args:
+        path (np.ndarray): Array of 3D points.
+
+    Returns:
+        np.ndarray: Normalized points.
+    """
+
     arr = np.array(path)
     centroid = np.mean(arr, axis=0)
     return arr - centroid
 
 def shape_similarity(p1, p2):
+    
     p1n = normalize_path(p1)
     p2n = normalize_path(p2)
     d1 = directed_hausdorff(p1n, p2n)[0]

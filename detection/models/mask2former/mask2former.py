@@ -1,5 +1,6 @@
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
+from detectron2 import model_zoo
 
 from  mask2former.config import add_maskformer2_config
 
@@ -28,10 +29,13 @@ class Mask2FormerModelLoader:
             device (str): 'cuda' or 'cpu'
         """
         self.cfg.merge_from_file(config_path)
+        self.cfg.merge_from_file(model_zoo.get_config_file("Cityscapes/panoptic_fpn_R_101_dconv.yaml"))
+
 
         self.cfg.defrost()
 
         self.cfg.MODEL.WEIGHTS = model_path
+        self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("Cityscapes/panoptic_fpn_R_101_dconv.yaml")
         self.cfg.MODEL.DEVICE = device
         self.cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON = True
         self.cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON = True

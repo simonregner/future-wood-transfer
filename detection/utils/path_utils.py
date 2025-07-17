@@ -26,7 +26,7 @@ def calculate_fitted_line(points, degree, t_fit):
     # (You may also compute the median of t differences if that's more robust.)
     dt = t_sorted[1] - t_sorted[0]
 
-    n_extension = 0
+    n_extension = 0  # Number of extra points to extend before the start of the data
 
     # Generate n_extension extra t-values that extend *before* the beginning of your data.
     # For example, if you have 5 extra points, you can create them from t_sorted[0] - 5*dt up to t_sorted[0]

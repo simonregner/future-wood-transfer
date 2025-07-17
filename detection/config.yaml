@@ -1,0 +1,18 @@
+# Configuration for Detection Module
+max_depth: 13
+model_type: mask2former  # Options: mask2former, yolo
+computation_type: mask path
+# Set model path, when you want to use a custom model
+# model_path: models/yolo/best.pt
+
+# ROS Topic Configuration
+topic_rgb: /hazard_front/stereo_node_front/rgb
+topic_depth: /hazard_front/stereo_node_front/depth
+topic_camera_info: /hazard_front/stereo_node_front/rgb/camera_info
+
+rgb_image_type: Image # CompressedImage or Image
+
+# Time Synchronization Configuration
+time_syncronizer: True  # True TimeSyncListener - False ApproximateTimeSyncListener
+sync_max_delay: 0.05  # maximal delay for approximate synchronization in seconds
+time_sync_queue_size: 1  # Size of the queue for time synchronization

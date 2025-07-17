@@ -25,7 +25,7 @@ if [ ! -f "$BAGFILE" ]; then
 fi
 
 echo "Starting rosbag play with remapping..."
-rosbag play "$BAGFILE" --loop \
+rosbag play "$BAGFILE" --loop -r 0.1 \
   /hazard_front/zed_node_front/depth/depth_registered:=/hazard_front/stereo_node_front/depth \
   /hazard_front/zed_node_front/imu/data:=/hazard_front/stereo_node_front/imu/data \
   /hazard_front/zed_node_front/left/image_rect_color:=/hazard_front/stereo_node_front/rgb \
