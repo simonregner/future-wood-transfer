@@ -3,7 +3,7 @@ import rclpy
 
 from ros_tools.ros_listener import TimeSyncListener  # This must inherit from Node!
 from detection.models.yolo.yolo import YOLOModelLoader
-from detection.models.mask2former.mask2former import Mask2FormerModelLoader
+#from detection.models.mask2former.mask2former import Mask2FormerModelLoader
 
 import yaml
 
@@ -34,12 +34,12 @@ def main():
     if args.model_type == "yolo":
         model_loader = YOLOModelLoader()
         model_loader.load_model(model_path)
-    elif args.model_type == "mask2former":
-        model_loader = Mask2FormerModelLoader()
-        model_loader.load_model(
-            "models/mask2former/configs/maskformer2_R50_bs16_50ep.yaml",
-            model_path
-        )
+    #elif args.model_type == "mask2former":
+    #    model_loader = Mask2FormerModelLoader()
+    #    model_loader.load_model(
+    #        "models/mask2former/configs/maskformer2_R50_bs16_50ep.yaml",
+    #        model_path
+    #    )
 
     # Create and spin your main ROS2 node
     ros_listener = TimeSyncListener(model_loader, args=args)

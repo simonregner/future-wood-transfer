@@ -1,6 +1,6 @@
 # Configuration for Detection Module
 max_depth: 13
-model_type: mask2former  # Options: mask2former, yolo
+model_type: yolo  # Options: mask2former, yolo
 computation_type: mask path
 # Set model path, when you want to use a custom model
 # model_path: models/yolo/best.pt

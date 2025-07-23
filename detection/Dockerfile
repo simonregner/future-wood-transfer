@@ -79,7 +79,7 @@ ENV PYTHONPATH="/Mask2Former:${PYTHONPATH}"
 
 # 9️⃣ Projektdateien kopieren
 COPY ../.. /detection
-COPY ros_tools/road_lines_msg/ros2 /ros2_ws/src/road_lines_msg
+COPY ros_tools/road_lines_msg /ros2_ws/src/road_lines_msg
 
 # 🔟 ROS 2-Workspace bauen
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd /ros2_ws && colcon build"
