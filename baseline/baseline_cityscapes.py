@@ -1,15 +1,36 @@
-import requests
+import os
+import cv2
 import torch
-from PIL import Image
-import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.patches as mpatches
+from PIL import Image
+from scipy.ndimage import label
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
 
-from scipy.ndimage import label
+# -----------------------------
+# Settings
+# -----------------------------
+IMAGE_PATHS = [
+    "baseline/image_01.png",
+    "baseline/image_03.jpg",
+    "baseline/image_05.png",
+    "baseline/image_06.png",
+    "baseline/image_07.png",
+    "baseline/image_08.png",
+    "baseline/image_09.jpeg",
+    "baseline/image_10.png",
+    "baseline/image_11.png",
+    "baseline/image_12.png",
+]
+OUTPUT_DIR = "baseline/output/baseline_mask2former"
+ALPHA = 0.5           # transparency for overlay
+MIN_AREA = 1000       # min connected-component area (pixels) to keep
 
-import cv2
-
+# Collage layout
+GRID_COLS = 3                           # number of columns in the collage
+GRID_BG_COLOR = (255, 255, 255)         # white background for collage
+GRID_FILENAME = "overlay_grid.png"      # output collage name
+# OPTIONAL: force a uniform cell size for each tile (uncomment to fix size)
+# FORCE_CELL_SIZE = (720, 1280)         # (height, width)
 
 # Cityscapes label map (label_id to name)
 CITYSCAPES_LABELS = {
@@ -21,207 +42,291 @@ CITYSCAPES_LABELS = {
     28: 'bus', 29: 'caravan', 30: 'trailer', 31: 'train', 32: 'motorcycle', 33: 'bicycle', -1: 'void'
 }
 
-# Load processor and model
-processor = AutoImageProcessor.from_pretrained("facebook/mask2former-swin-large-cityscapes-panoptic")
-model = Mask2FormerForUniversalSegmentation.from_pretrained("facebook/mask2former-swin-large-cityscapes-panoptic")
+# -----------------------------
+# Setup
+# -----------------------------
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Load a local image
-image = Image.open("baseline/image_09.jpeg").convert("RGB")
-inputs = processor(images=image, return_tensors="pt")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
 
-# Run inference
-with torch.no_grad():
-    outputs = model(**inputs)
+processor = AutoImageProcessor.from_pretrained("facebook/mask2former-swin-small-cityscapes-panoptic")
+model = Mask2FormerForUniversalSegmentation.from_pretrained(
+    "facebook/mask2former-swin-small-cityscapes-panoptic",
+    use_safetensors=True
+).to(device)
+model.eval()
 
-# Post-process panoptic segmentation
-result = processor.post_process_panoptic_segmentation(outputs, target_sizes=[image.size[::-1]])[0]
+# reproducible colors
+rng = np.random.RandomState(42)
 
-# Extract segmentation and segment info
-segmentation_map = result["segmentation"].numpy()
-segments_info = result["segments_info"]
+# -----------------------------
+# Helper: resize+pad (letterbox) to a fixed cell size
+# -----------------------------
+def letterbox_to_size(img: np.ndarray, target_h: int, target_w: int,
+                      bg_color=(255, 255, 255)) -> np.ndarray:
+    """
+    Resize image to fit inside (target_h, target_w) preserving aspect ratio,
+    then pad with bg_color to exactly that size.
+    """
+    h, w = img.shape[:2]
+    scale = min(target_w / w, target_h / h)
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
 
-road_ids = [
-    segment["id"]
-    for segment in segments_info
-    if CITYSCAPES_LABELS.get(segment["label_id"], "") == "road"
-]
+    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+    resized = cv2.resize(img, (new_w, new_h), interpolation=interp)
 
-road_mask = np.isin(segmentation_map, road_ids).astype(np.uint8)
+    canvas = np.full((target_h, target_w, 3), bg_color, dtype=np.uint8)
+    y0 = (target_h - new_h) // 2
+    x0 = (target_w - new_w) // 2
+    canvas[y0:y0+new_h, x0:x0+new_w] = resized
+    return canvas
 
-
-# Assume road_mask is your binary mask (values 0 or 1)
-labeled_mask, num_features = label(road_mask)
-
-# Create individual binary masks
-min_area = 1000
-
-individual_masks = []
-for i in range(1, num_features + 1):
-    component = (labeled_mask == i).astype(np.uint8)
-    area = component.sum()
-    if area >= min_area:
-        individual_masks.append(component)
-
-def create_offset_masks_from_road(road_mask, step=20, radius=10):
-    height, width = road_mask.shape
-    print(height, width)
-    left_points = []
-    right_points = []
-
-    # Step 1: scan from bottom to top every `step` rows
-    for y in range(height - 1, 0, -step):
-        x_indices = np.where(road_mask[y] > 0)[0]
-        if len(x_indices) >= 2:
-            left_x = x_indices[0]
-            right_x = x_indices[-1]
-            left_points.append((left_x, y))
-            right_points.append((right_x, y))
-
-    # Convert to numpy for drawing
-    left_points_np = np.array(left_points, dtype=np.int32)
-    right_points_np = np.array(right_points, dtype=np.int32)        
-
-    # Step 2: Create empty masks
-    left_mask = np.zeros_like(road_mask, dtype=np.uint8)
-    right_mask = np.zeros_like(road_mask, dtype=np.uint8)
-
-    # Step 3: Draw polylines
-    if len(left_points_np) >= 2:
-        cv2.polylines(left_mask, [left_points_np], isClosed=False, color=1, thickness=1)
-        left_mask = cv2.dilate(left_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius*2, radius*2)))
-
-    if len(right_points_np) >= 2:
-        cv2.polylines(right_mask, [right_points_np], isClosed=False, color=1, thickness=1)
-        right_mask = cv2.dilate(right_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius*2, radius*2)))
-
-    return left_mask, right_mask, left_points, right_points
-
-print(f"Number of individual road masks: {len(individual_masks)}")
-
-outer_mask = []
-
-for i, mask in enumerate(individual_masks):
-    # Create offset masks from the road mask
-    print(f"Processing individual mask {i+1}/{len(individual_masks)}")
-    left_mask, right_mask, left_points, right_points = create_offset_masks_from_road(mask)
-
-    # Add the combined mask to the list of individual masks
-    outer_mask.append(left_mask)
-    outer_mask.append(right_mask)
-
-individual_masks.extend(outer_mask)
-
-
-# Generate a unique color for each segment
-id2color = [
-    np.random.randint(0, 255, size=3) for i in individual_masks
-]
-
-# Create a blank RGB image to hold color-coded segmentation
-colored_segmentation = np.zeros((*segmentation_map.shape, 3), dtype=np.uint8)
-
-for i, mask in enumerate(individual_masks):
-    color = id2color[i]
-    colored_segmentation[mask == 1] = color
-
-
-#for segment in segments_info:
-#    mask = segmentation_map == segment["id"]
-#    colored_segmentation[mask] = id2color[segment["id"]]
-
-# Create legend patches with label names
-
-# Plot
-# fig, axs = plt.subplots(1, 2, figsize=(16, 8))
-# axs[0].imshow(image)
-# axs[0].set_title("Original Image")
-# axs[0].axis("off")
-
-# axs[1].imshow(colored_segmentation)
-# axs[1].set_title("Panoptic Segmentation")
-# axs[1].axis("off")
-
-# plt.tight_layout()
-# plt.show()
-
-
-
-import os
-
-# List of image paths
-image_paths = [
-    "baseline/image_01.png",
-    "baseline/image_03.jpg",
-    "baseline/image_05.png",
-    "baseline/image_06.png",
-    "baseline/image_07.png",
-    "baseline/image_08.png",    
-    "baseline/image_09.jpeg",
-    "baseline/image_10.png",
-    "baseline/image_11.png",
-    "baseline/image_12.png"
-]
-
-rows = len(image_paths)
-results = []  # To store image and segmentation pairs
-
-for image_path in image_paths:
-    image = Image.open(image_path).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt")
-
-    with torch.no_grad():
-        outputs = model(**inputs)
-
-    result = processor.post_process_panoptic_segmentation(outputs, target_sizes=[image.size[::-1]])[0]
-    segmentation_map = result["segmentation"].numpy()
-    segments_info = result["segments_info"]
-
+# -----------------------------
+# Helper: build colored mask for "road" components
+# -----------------------------
+def build_colored_mask_for_roads(segmentation_map: np.ndarray, segments_info: list) -> np.ndarray:
+    """
+    Returns an HxWx3 uint8 array with color on connected road components.
+    Pixels not belonging to 'road' are zeros.
+    """
+    # find segment IDs whose label name is "road"
     road_ids = [
-        segment["id"]
-        for segment in segments_info
-        if CITYSCAPES_LABELS.get(segment["label_id"], "") == "road"
+        seg["id"]
+        for seg in segments_info
+        if CITYSCAPES_LABELS.get(seg["label_id"], "") == "road"
     ]
 
+    if len(road_ids) == 0:
+        return np.zeros((*segmentation_map.shape, 3), dtype=np.uint8)
+
+    # binary mask for road (0/1)
     road_mask = np.isin(segmentation_map, road_ids).astype(np.uint8)
 
+    # connected components
     labeled_mask, num_features = label(road_mask)
 
-    min_area = 1000
-    individual_masks = []
-    for i in range(1, num_features + 1):
-        component = (labeled_mask == i).astype(np.uint8)
-        if component.sum() >= min_area:
-            individual_masks.append(component)
+    colored = np.zeros((*segmentation_map.shape, 3), dtype=np.uint8)
+    if num_features == 0:
+        return colored
 
-    outer_mask = []
-    for mask in individual_masks:
-        left_mask, right_mask, _, _ = create_offset_masks_from_road(mask)
-        outer_mask.extend([left_mask, right_mask])
+    # color each component (filter by MIN_AREA)
+    for comp_id in range(1, num_features + 1):
+        component = (labeled_mask == comp_id)
+        if component.sum() < MIN_AREA:
+            continue
+        color = (0, 0, 255)  # BGR red when saving with OpenCV, looks red in RGB arrays too
+        colored[component] = color
 
-    individual_masks.extend(outer_mask)
+    return colored
 
-    id2color = [np.random.randint(0, 255, size=3) for _ in individual_masks]
-    colored_segmentation = np.zeros((*segmentation_map.shape, 3), dtype=np.uint8)
-    for i, mask in enumerate(individual_masks):
-        colored_segmentation[mask == 1] = id2color[i]
+# -----------------------------
+# Main loop
+# -----------------------------
+overlays_for_collage = []
 
-    results.append((image, colored_segmentation))
+with torch.no_grad():
+    for image_path in IMAGE_PATHS:
+        if not os.path.isfile(image_path):
+            print(f"[WARN] Skipping missing file: {image_path}")
+            continue
+
+        # load image
+        image = Image.open(image_path).convert("RGB")
+        width, height = image.size
+
+        # preprocess & forward
+        inputs = processor(images=image, return_tensors="pt").to(device)
+        outputs = model(**inputs)
+
+        # panoptic post-process to the original size
+        result = processor.post_process_panoptic_segmentation(
+            outputs, target_sizes=[(height, width)]
+        )[0]
+
+        segmentation_map = (
+            result["segmentation"].cpu().numpy()
+            if hasattr(result["segmentation"], "cpu")
+            else result["segmentation"]
+        )
+        segments_info = result["segments_info"]
+
+        # build colored mask for road regions
+        colored_seg = build_colored_mask_for_roads(segmentation_map, segments_info)
+
+        # overlay only where mask exists (so background isn't dimmed)
+        orig_np = np.array(image, dtype=np.uint8)
+        overlay = orig_np.copy()
+
+        mask_any = colored_seg.any(axis=2)
+        if mask_any.any():
+            blended = (
+                orig_np[mask_any].astype(np.float32) * (1.0 - ALPHA) +
+                colored_seg[mask_any].astype(np.float32) * ALPHA
+            ).astype(np.uint8)
+            overlay[mask_any] = blended
+        else:
+            print(f"[INFO] No road mask found (or below MIN_AREA) in {os.path.basename(image_path)}.")
+
+        # save overlay (cv2 expects BGR)
+        fname = os.path.basename(image_path)
+        save_path = os.path.join(OUTPUT_DIR, f"overlay_{fname}")
+        cv2.imwrite(save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+        print(f"[OK] Saved: {save_path}")
+
+        overlays_for_collage.append(overlay)
+
+def add_title_to_canvas(canvas: np.ndarray, title: str,
+                        font_scale=15.0, thickness=5,
+                        text_color=(0, 0, 0),
+                        bg_color=(255, 255, 255)) -> np.ndarray:
+    """
+    Adds a title text at the very top center of the collage.
+    Expands the canvas upward to make space.
+    """
+    h, w = canvas.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # Get text size
+    (text_w, text_h), baseline = cv2.getTextSize(title, font, font_scale, thickness)
+    margin = 20
+    new_h = h + text_h + margin*2
+
+    # Create new canvas with extra top space
+    new_canvas = np.full((new_h, w, 3), bg_color, dtype=np.uint8)
+
+    # Copy old canvas below
+    new_canvas[text_h + margin*2:, :, :] = canvas
+
+    # Put text centered
+    x = (w - text_w) // 2
+    y = text_h + margin
+    cv2.putText(new_canvas, title, (x, y),
+                font, font_scale, text_color, thickness, lineType=cv2.LINE_AA)
+
+    return new_canvas
+
+def save_collage_under_size(
+    canvas_rgb: np.ndarray,
+    out_path: str,
+    max_bytes: int = 5 * 1024 * 1024,   # 5 MB
+    max_width: int | None = 2400,       # cap width (optional)
+    max_height: int | None = None,      # or cap height
+    init_quality: int = 90,
+    min_quality: int = 40,
+    quality_step: int = 5
+) -> str:
+    """
+    Save an RGB collage as JPEG under max_bytes.
+    1) Optional downscale to max_width/height.
+    2) Reduce JPEG quality until under size.
+    3) If still too big at min_quality, progressively downscale and retry.
+    Returns the saved path.
+    """
+    img = canvas_rgb
+
+    # 1) Optional initial downscale to fit max dims
+    h, w = img.shape[:2]
+    scale = 1.0
+    scales = []
+    if max_width:
+        scales.append(max_width / w)
+    if max_height:
+        scales.append(max_height / h)
+    if scales:
+        scale = min(min(scales), 1.0)
+    if scale < 1.0:
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    # Try reducing quality; if needed, also progressively downscale
+    bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    def try_encode(bgr_img, q):
+        enc = cv2.imencode(
+            ".jpg",
+            bgr_img,
+            [cv2.IMWRITE_JPEG_QUALITY, q,
+             cv2.IMWRITE_JPEG_PROGRESSIVE, 1]  # progressive helps size a bit
+        )[1]
+        return enc
+
+    cur_img = bgr.copy()
+    cur_quality = init_quality
+
+    while True:
+        # Descend quality
+        q = cur_quality
+        while q >= min_quality:
+            buf = try_encode(cur_img, q)
+            if buf.nbytes <= max_bytes:
+                with open(out_path, "wb") as f:
+                    f.write(buf.tobytes())
+                return out_path
+            q -= quality_step
+
+        # Still too big: downscale 10% and retry from init_quality
+        ch, cw = cur_img.shape[:2]
+        new_w = int(cw * 0.9)
+        new_h = int(ch * 0.9)
+        if new_w < 640 or new_h < 360:
+            # give up before it gets comically small; save whatever we have at min_quality
+            buf = try_encode(cur_img, min_quality)
+            with open(out_path, "wb") as f:
+                f.write(buf.tobytes())
+            return out_path
+
+        cur_img = cv2.resize(cur_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        cur_quality = init_quality
 
 
-# Plot all images and masks vertically
-fig, axs = plt.subplots(rows, 2, figsize=(12, rows * 5))
+# -----------------------------
+# Build & save one combined collage image
+# -----------------------------
+if len(overlays_for_collage) > 0:
+    cols = max(1, GRID_COLS)
+    rows = int(np.ceil(len(overlays_for_collage) / cols))
 
-if rows == 1:
-    axs = np.expand_dims(axs, 0)  # Ensure axs is 2D for consistent access
+    # decide a cell size (largest overlay dims, or forced size if set)
+    heights = [img.shape[0] for img in overlays_for_collage]
+    widths  = [img.shape[1] for img in overlays_for_collage]
+    cell_h, cell_w = max(heights), max(widths)
 
-for i, (orig_img, seg_img) in enumerate(results):
-    axs[i, 0].imshow(orig_img)
-    #axs[i, 0].set_title(f"Original Image {i+1}")
-    axs[i, 0].axis("off")
+    # If you want a fixed size, uncomment FORCE_CELL_SIZE above and use it:
+    # try:
+    #     cell_h, cell_w = FORCE_CELL_SIZE
+    # except NameError:
+    #     pass
 
-    axs[i, 1].imshow(seg_img)
-    #axs[i, 1].set_title(f"Segmented Mask {i+1}")
-    axs[i, 1].axis("off")
+    canvas_h = rows * cell_h
+    canvas_w = cols * cell_w
+    canvas = np.full((canvas_h, canvas_w, 3), GRID_BG_COLOR, dtype=np.uint8)
 
-plt.tight_layout()
-plt.show()
+    for idx, img in enumerate(overlays_for_collage):
+        r = idx // cols
+        c = idx % cols
+        tile = letterbox_to_size(img, cell_h, cell_w, GRID_BG_COLOR)
+        y0 = r * cell_h
+        x0 = c * cell_w
+        canvas[y0:y0+cell_h, x0:x0+cell_w] = tile
+
+    canvas_with_title = add_title_to_canvas(canvas, "Baseline - Detectron2 - Mask2Former")
+
+    grid_path = os.path.join(OUTPUT_DIR, GRID_FILENAME)
+    saved_path = save_collage_under_size(
+        canvas_with_title,
+        grid_path,
+        max_bytes=5 * 1024 * 1024,  # 5 MB
+        max_width=2400,             # tweak as you like (e.g., 2000–3000)
+        max_height=None,            # or set a height cap instead
+        init_quality=90,
+        min_quality=45,
+        quality_step=5
+    )
+    print(f"[OK] Saved collage: {grid_path}")
+else:
+    print("[INFO] No overlays produced; collage skipped.")
+
+print("Done.")

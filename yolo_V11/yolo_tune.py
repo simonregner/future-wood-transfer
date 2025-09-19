@@ -1,6 +1,6 @@
 from ultralytics import YOLO#
 
-model = YOLO("yolo11s-seg.pt")
+model = YOLO("yolo11m-seg.pt")
 
 # rect=true ?
 
@@ -29,18 +29,17 @@ search_space = {
 }
 
 model.tune(
-    data="../data/aiforest_coco8.yaml",
-    batch=64,
-    epochs=30,
-    iterations=300,
+    data="../data/aiforest_road_noaug.yaml",
+    batch=0.6,
+    epochs=50,
+    iterations=500,
     imgsz=320,
-    optimizer="SGD",
-    cache=True,
     half=True,
     plots=False,
     save=False,
-    val=False,
     resume=True,
     space=search_space,
-    name="tune_roads_30epochs",
+    name="paper_tune",
+    fraction=0.5,
+    warmup_epochs=3,
 )

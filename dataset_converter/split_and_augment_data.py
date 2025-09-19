@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
+import albumentations as A
 
 # Toggle augmentation on/off
 ENABLE_AUGMENTATION = True
@@ -16,25 +17,20 @@ SAVE_AS_GRAYSCALE = False
 FLIP_ONLY_IF_SPECIFIC_CLASSES = True
 SPECIFIC_CLASSES = ['2', '3', '5']  # Flip only if one of these classes is present.
 
-# Set main input folders
-input_folders = [
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_1/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/images',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Seetaleralps/images',
+from glob import glob
 
-]
+# Define root directory (only one folder)
+input_root = '/home/simon/Documents/Master-Thesis/data/yolo_lanes'
+
+# Automatically find all subfolders named "images"
+all_image_folders = sorted(glob(os.path.join(input_root, '**/images'), recursive=True))
+
+ #Define folders to exclude (by their parent folder names or full paths)
+exclude_folders = ['Cityscape', 'CAVS', 'Google_Maps', 'Google_Maps_Macbook', 'GOOSE', 'Road_Detection_Asphalt', 'ROSBAG_INTERSECTION', 'ROSBAG_UNI']  # <-- change this
+# Optionally: use full path(s) like ['/home/simon/.../exclude_folder/images']
+
+# Filter out excluded folders
+input_folders = [f for f in all_image_folders if not any(excl in f for excl in exclude_folders)]
 
 # Define special folder and its labels folder (adjust paths as needed)
 special_folder_images = '/home/simon/Documents/Master-Thesis/data/COCO/train2017'
@@ -42,12 +38,14 @@ special_folder_labels = '/home/simon/Documents/Master-Thesis/data/COCO/annotatio
 special_percentage = 0.1  # e.g., 10%
 
 # Set output folder and structure
-output_folder = '/home/simon/Documents/Master-Thesis/data/yolo_training_data'
+output_folder = '/home/simon/Documents/Master-Thesis/data/yolo_training_finetune'
 output_structure = {
     'train': {'images': os.path.join(output_folder, 'train/images'),
               'labels': os.path.join(output_folder, 'train/labels')},
     'val': {'images': os.path.join(output_folder, 'val/images'),
-            'labels': os.path.join(output_folder, 'val/labels')}
+            'labels': os.path.join(output_folder, 'val/labels')},
+    'test': {'images': os.path.join(output_folder, 'test/images'),
+             'labels': os.path.join(output_folder, 'test/labels')}
 }
 
 # Create output directories
@@ -100,9 +98,19 @@ all_labels = [all_labels[i] for i in indices]
 
 # Calculate dataset split indices
 num_images = len(all_images)
+
 train_size = int(num_images * 0.7)
-train_images, val_images = all_images[:train_size], all_images[train_size:]
-train_labels, val_labels = all_labels[:train_size], all_labels[train_size:]
+val_size   = int(num_images * 0.2)
+test_size  = num_images - train_size - val_size
+
+train_images = all_images[:train_size]
+train_labels = all_labels[:train_size]
+
+val_images = all_images[train_size:train_size+val_size]
+val_labels = all_labels[train_size:train_size+val_size]
+
+test_images = all_images[train_size+val_size:]
+test_labels = all_labels[train_size+val_size:]
 
 
 # Helper function to generate unique file names
@@ -274,6 +282,17 @@ def flip_image_and_update_labels(image, label_path, output_image_path, output_la
     else:
         open(output_label_path, 'w').close()
 
+
+def _apply_albu_bgr(image_bgr, transform: A.BasicTransform):
+    """
+    Apply an Albumentations transform to a BGR uint8 image and return BGR.
+    """
+    if image_bgr is None:
+        return image_bgr
+    # Albumentations expects HWC uint8 BGR fine
+    out = transform(image=image_bgr)
+    return out["image"]
+
 # Mapping augmentation names to functions.
 # For flip, we now call our custom function.
 augmentations = {
@@ -292,7 +311,19 @@ augmentations = {
         factor=0.9,
         sat_scale_range=(0.7, 1.0),
         val_scale_range=(0.8, 1.0),
-        auto_src=True)
+        auto_src=True),
+    "fog": lambda im: _apply_albu_bgr(
+        im,
+        A.RandomFog(p=1.0)  # adjust fog_coef [0.0–1.0]
+    ),
+    "rain": lambda im: _apply_albu_bgr(
+        im,
+        A.RandomRain(p=1.0)
+    ),
+    "snowflakes": lambda im: _apply_albu_bgr(
+        im,
+        A.RandomSnow(p=1.0)
+    ),
     #'flip' will be handled separately using our custom function.
 }
 
@@ -365,7 +396,9 @@ def copy_and_augment_files(images, labels, set_name):
 
 # Copy and augment for training and validation sets
 copy_and_augment_files(train_images, train_labels, 'train')
+ENABLE_AUGMENTATION = False
 copy_and_augment_files(val_images, val_labels, 'val')
+copy_and_augment_files(test_images, test_labels, 'test')
 
 print("Dataset successfully split into train and val sets with a special folder contribution of {:.1%}.".format(
     special_percentage))

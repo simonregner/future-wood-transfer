@@ -1,66 +1,45 @@
 import os
 
-# List of directory paths containing the text files for each image
-directory_paths = [
-    #"/home/simon/Documents/Master-Thesis/data/yolo_training_data/train/labels/",
-    #"/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/labels/"
+# -------- CONFIGURATION --------
+base_folder = "/home/simon/Documents/Master-Thesis/data/yolo_training_data/"
+numbers_to_change = ["7"]# ["2", "3", "5", "6"]
+special_number = "4"
 
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/CAVS/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/GOOSE/labels',
-    #'/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Road_Detection_Asphalt/images',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_INTERSECTION/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Intersections/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Google_Maps_MacBook/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/Forest_Testarea/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_1/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_01_2/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_1/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_ForestRoads_02_2/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/MM_INTERSECTION_JAKOB/labels',
-    '/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed/ROSBAG_UNI/labels',
+classes_to_remove = []  # <- example: these class lines will be removed completely
+# -------------------------------
 
-    # Add more paths as needed
-]
-# 0: background
-# 1: bulge_road
-# 2: left_turn
-# 3: right_turn
-# 4: road
-# 5: straight_turn
-# List of class numbers to change and the special number to replace them with.
-numbers_to_change = ["2", "3", "5", "6"]  # Change these to the numbers you want to replace
-#numbers_to_change = ["4"]  # Change these to the numbers you want to replace
-special_number = "4"                      # Change this to your desired special number
+changed_files_count = 0
+removed_lines_count = 0
 
-changed_files_count = 0  # Counter for the number of files that have been modified
+for root, _, files in os.walk(base_folder):
+    for file in files:
+        if file.endswith(".txt"):
+            file_path = os.path.join(root, file)
+            file_changed = False
+            removed_lines = 0
 
-# Process each directory in the list
-for directory_path in directory_paths:
-    for filename in os.listdir(directory_path):
-        if filename.endswith(".txt"):
-            file_path = os.path.join(directory_path, filename)
-            file_changed = False  # Flag to track if the current file has been changed
+            with open(file_path, "r") as f:
+                lines = f.readlines()
 
-            # Read the file lines
-            with open(file_path, "r") as file:
-                lines = file.readlines()
-
-            # Modify lines where the first element (class number) is in the list
             modified_lines = []
             for line in lines:
                 parts = line.strip().split()
-                # Check if the line is non-empty and its first element is one of the numbers to change
-                if parts and parts[0] in numbers_to_change:
+                if not parts:
+                    continue
+                if parts[0] in classes_to_remove:
+                    file_changed = True
+                    removed_lines += 1
+                    continue  # skip this line entirely
+                if parts[0] in numbers_to_change:
                     parts[0] = special_number
                     file_changed = True
                 modified_lines.append(" ".join(parts))
 
-            # Write the modified lines back to the file
-            with open(file_path, "w") as file:
-                file.write("\n".join(modified_lines))
-
             if file_changed:
+                with open(file_path, "w") as f:
+                    f.write("\n".join(modified_lines) + ("\n" if modified_lines else ""))
                 changed_files_count += 1
+                removed_lines_count += removed_lines
 
-print(f"Classes {', '.join(numbers_to_change)} have been changed to class {special_number} in {changed_files_count} file(s) across the specified directories.")
+print(f"Classes {', '.join(numbers_to_change)} have been changed to class {special_number} in {changed_files_count} file(s).")
+print(f"{removed_lines_count} line(s) with classes {', '.join(classes_to_remove)} have been removed.")

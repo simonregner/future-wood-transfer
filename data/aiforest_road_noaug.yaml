@@ -1,0 +1,10 @@
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+train: /home/simon/Documents/Master-Thesis/data/yolo_training_data_road_noaug/train # train images (relative to 'path') 118287 images
+val: /home/simon/Documents/Master-Thesis/data/yolo_training_data_road_noaug/val # val images (relative to 'path') 5000 images
+
+nc: 2
+# Classes
+names: [
+  "road",
+  "road_boundary"
+]

@@ -84,14 +84,14 @@ def process_segmentation_file(txt_path):
     for line in lines:
         class_id = int(line[0])
         coords = line[1:]
-        if class_id != 7:
+        if class_id != 1:
             new_lines.append(line)
             continue
 
         polygon = [(coords[i]*image_width, coords[i+1]*image_height) for i in range(0, len(coords), 2)]
-        smoothed = smooth_polygon(polygon, epsilon_factor=0.001)
+        #smoothed = smooth_polygon(polygon, epsilon_factor=0.001)
 
-        dilated = dilate_polygon(smoothed, image_width, image_height, dilation_pixels=5)
+        dilated = dilate_polygon(polygon, image_width, image_height, dilation_pixels=2)
 
         resampled = smooth_polygon(dilated, epsilon_factor=0.001)
 
@@ -128,13 +128,13 @@ def clean_dataset(root_folder):
             # Now check if .txt contains class 7
             with open(txt_path, "r") as f:
                 lines = f.readlines()
-                contains_class_7 = any(line.strip().startswith("7 ") for line in lines)
+                contains_class_7 = any(line.strip().startswith("1 ") for line in lines)
 
-            if not contains_class_7:
-                print(f"🗑️ Removing {txt_path} and image (no class 7)")
-                os.remove(txt_path)
-                if os.path.exists(image_path):
-                    os.remove(image_path)
+            #if not contains_class_7:
+            #    print(f"🗑️ Removing {txt_path} and image (no class 7)")
+            #    os.remove(txt_path)
+            #    if os.path.exists(image_path):
+            #        os.remove(image_path)
 
 def process_all_txt_files(root_folder):
 
@@ -148,4 +148,4 @@ def process_all_txt_files(root_folder):
                 process_segmentation_file(txt_path)
 
 # 🔧 Use it like this:
-process_all_txt_files('/home/simon/Documents/Master-Thesis/data/yolo_lanes_smoothed')
+process_all_txt_files('/home/simon/Documents/Master-Thesis/data/yolo_training_data_road')

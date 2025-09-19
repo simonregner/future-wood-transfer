@@ -203,12 +203,15 @@ class TimeSyncListener(Node):
         kernel = np.ones((3, 3), np.uint8)
         degree = 3
 
+        line_pointclouds = []
+
         for i, mask in enumerate(masks_predicted):
             if classes_predicted[i] == 7:
                 mask = cv2.erode(mask, kernel, iterations=1)
                 mask[depth_image == 0] = 0
                 masks.append(mask)
                 point_cloud = depth_to_pointcloud_from_mask(depth_image, self.intrinsic_matrix, mask)
+                line_pointclouds.append(point_cloud)
                 points = np.asarray(point_cloud.points)
                 if points.size == 0 or len(points) <= degree:
                     continue
@@ -261,7 +264,7 @@ class TimeSyncListener(Node):
         if 'pointcloud' in self.args.computation_type:
             from detection.pointcloud.create_pointcloud import create_pointcloud
             pointcloud = create_pointcloud(depth_image, self.intrinsic_matrix)
-            self.point_cloud_publisher.publish_pointcloud(pointcloud.points, [], [], frame_id)
+            self.point_cloud_publisher.publish_pointcloud(pointcloud.points, line_pointclouds[0], line_pointclouds[1], frame_id)
 
         self.timers_subscriber = timer_utils.end_timer(self.timers_subscriber, start_time)
 

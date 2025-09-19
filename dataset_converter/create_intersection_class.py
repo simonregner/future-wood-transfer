@@ -1,6 +1,8 @@
 import os
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+from tqdm import tqdm
+
 
 
 def combine_classes_in_file(filepath):
@@ -14,7 +16,7 @@ def combine_classes_in_file(filepath):
     The expected annotation format per line is:
       class_id x1 y1 x2 y2 ... xN yN
     """
-    classes_to_combine = {'2', '3', '5'}
+    classes_to_combine = {'2', '3', '4', '5'}
     kept_lines = []  # Lines to keep (annotations not in classes 4, 5, or 6)
     polygons_to_combine = []  # Polygons from classes 4, 5, and 6
 
@@ -50,7 +52,7 @@ def combine_classes_in_file(filepath):
             for poly in combined.geoms:
                 coords = list(poly.exterior.coords)
                 coords_flat = " ".join(f"{coord:.6f}" for point in coords for coord in point)
-                new_annotation_lines.append(f"6 {coords_flat}")
+                new_annotation_lines.append(f"4 {coords_flat}")
         else:
             print(f"Combined geometry in {filepath} is not a polygon or multipolygon.")
             new_annotation_lines = []
@@ -60,14 +62,15 @@ def combine_classes_in_file(filepath):
     with open(filepath, 'w') as f:
         for line in kept_lines:
             f.write(line + "\n")
-    print(f"Processed (in-place): {filepath}")
+    #print(f"Processed (in-place): {filepath}")
 
 
 def process_folder_in_place(folder):
     """
     Processes all .txt annotation files in the given folder, modifying each file in place.
     """
-    for filename in os.listdir(folder):
+    print(f"Processing folder: {folder}")
+    for filename in tqdm(os.listdir(folder), total=len(os.listdir(folder)),desc=f"Create Intersection "): 
         if filename.lower().endswith(".txt"):
             filepath = os.path.join(folder, filename)
             combine_classes_in_file(filepath)
@@ -84,5 +87,7 @@ def process_two_folders_in_place(folder1, folder2):
 # Example usage with two folders:
 folder1 = "/home/simon/Documents/Master-Thesis/data/yolo_training_data/train/labels"
 folder2 = "/home/simon/Documents/Master-Thesis/data/yolo_training_data/val/labels"
-
+#folder3 = "/home/simon/Documents/Master-Thesis/data/baseline_test/test/labels"
+#process_folder_in_place(folder3)
+# 
 process_two_folders_in_place(folder1, folder2)
