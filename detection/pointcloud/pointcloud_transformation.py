@@ -3,6 +3,23 @@ import numpy as np
 
 
 def pointcloud_transformation(pointcloud_current, pointcloud_previous):
+    """
+    Estimate the rigid transformation (rotation + translation) between two consecutive
+    point clouds using ICP (Iterative Closest Point) registration.
+
+    Both point clouds are first voxel-downsampled (2 cm grid) and have normals estimated
+    to speed up and stabilize the ICP alignment. Registration starts from the identity
+    matrix, which works well when motion between frames is small (e.g. sequential camera frames).
+
+    Args:
+        pointcloud_current (o3d.geometry.PointCloud): The latest (target) point cloud.
+        pointcloud_previous (o3d.geometry.PointCloud): The previous (source) point cloud
+                                                       that is aligned onto the current one.
+
+    Returns:
+        rotation (np.ndarray): 3x3 rotation matrix from previous to current frame.
+        translation (np.ndarray): 3-element translation vector from previous to current frame.
+    """
     # Downsample the point clouds to speed up the registration
     voxel_size = 0.02  # adjust voxel size as needed (in meters)
     pointcloud_previous = pointcloud_previous.voxel_down_sample(voxel_size)

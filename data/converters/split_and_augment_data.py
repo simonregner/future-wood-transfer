@@ -20,7 +20,7 @@ SPECIFIC_CLASSES = ['2', '3', '5']  # Flip only if one of these classes is prese
 from glob import glob
 
 # Define root directory (only one folder)
-input_root = '/home/simon/Documents/Master-Thesis/data/yolo_lanes'
+input_root = '/mnt/BigDisk/NextCloud/FWT/Road_Detection_Training_Data'
 
 # Automatically find all subfolders named "images"
 all_image_folders = sorted(glob(os.path.join(input_root, '**/images'), recursive=True))
@@ -33,12 +33,12 @@ exclude_folders = ['Cityscape', 'CAVS', 'Google_Maps', 'Google_Maps_Macbook', 'G
 input_folders = [f for f in all_image_folders if not any(excl in f for excl in exclude_folders)]
 
 # Define special folder and its labels folder (adjust paths as needed)
-special_folder_images = '/home/simon/Documents/Master-Thesis/data/COCO/train2017'
-special_folder_labels = '/home/simon/Documents/Master-Thesis/data/COCO/annotations/empty'
+special_folder_images = '/home/regner/Documents/Projects/FutureWoodTrans/data/coco/train2017'
+special_folder_labels = '/home/regner/Documents/Projects/FutureWoodTrans/data/coco/annotation'
 special_percentage = 0.1  # e.g., 10%
 
 # Set output folder and structure
-output_folder = '/home/simon/Documents/Master-Thesis/data/yolo_training_finetune'
+output_folder = '/home/regner/Documents/Projects/FutureWoodTrans/data/lane_training_yolo'
 output_structure = {
     'train': {'images': os.path.join(output_folder, 'train/images'),
               'labels': os.path.join(output_folder, 'train/labels')},

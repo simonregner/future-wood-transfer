@@ -13,7 +13,7 @@ class MaskPublisher(Node):
         self.bridge = CvBridge()
         self.frame_id = None
 
-    def publish_yolo_mask(self, image, mask_boundaries, road_mask, path_pairs, frame_id, yolo_mask=True):
+    def publish_segmentation_mask(self, image, mask_boundaries, road_mask, path_pairs, frame_id, yolo_mask=True):
         if mask_boundaries is None or len(path_pairs) == 0:
             image_msg = self.bridge.cv2_to_imgmsg(image, encoding="bgr8")
             image_msg.header = Header()

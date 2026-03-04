@@ -18,6 +18,16 @@ from std_msgs.msg import Header
 
 
 def compute_orientation(point_a, point_b):
+    """
+    Compute a ROS Quaternion representing the yaw orientation from point_a to point_b.
+
+    Args:
+        point_a: Starting point [x, y, z].
+        point_b: Ending point [x, y, z].
+
+    Returns:
+        geometry_msgs.msg.Quaternion: Orientation with roll=0, pitch=0, yaw towards point_b.
+    """
     direction = np.array(point_b) - np.array(point_a)
     yaw = np.arctan2(direction[1], direction[0])
     quaternion = tf_transformations.quaternion_from_euler(0, 0, yaw)
@@ -25,12 +35,28 @@ def compute_orientation(point_a, point_b):
 
 
 class PathPublisher:
+    """
+    ROS1 publisher for a single nav_msgs/Path.
+
+    NOTE: This is the legacy ROS1 implementation using rospy.
+    For ROS2, use SinglePathPublisher in ros_path_publisher.py instead.
+    """
     def __init__(self, topic_name='/pose_path'):
         self.publisher = rospy.Publisher(topic_name, Path, queue_size=1)
         self.frame_id = None
 
     def publish_path(self, points, frame_id):
+        """
+        Convert a list of 3D points into a nav_msgs/Path and publish it.
 
+        Each pose in the path is oriented toward the next point using a yaw-only
+        quaternion (roll and pitch are zero). The first two points are skipped to
+        avoid edge effects from the polynomial fitting at the start of the path.
+
+        Args:
+            points: Array of 3D points (N, 3), e.g. from a fitted boundary curve.
+            frame_id (str): TF frame the path is expressed in (e.g. 'camera_link').
+        """
         if len(points) < 2:
             rospy.logwarn("At least two points are required to create a path.")
             return

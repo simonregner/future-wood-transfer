@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.decomposition import PCA
 
-def calculate_fitted_line(points, degree, t_fit):
+def fit_parametric_polynomial_3d(points, degree, t_fit):
     # PCA to sort points
     t = PCA(n_components=1).fit_transform(points).flatten()
     sorted_idx = np.argsort(t)

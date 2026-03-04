@@ -3,6 +3,27 @@ import open3d as o3d
 import cv2
 
 def create_lines_in_image(image, lines_left, lines_right):
+    """
+    Project the 3D points of lines_left onto a 2D image using hardcoded camera intrinsics
+    and draw them as blue pixels.
+
+    Each 3D point is first transformed into camera coordinates via an identity extrinsic
+    matrix (no rotation/translation), then projected using the pinhole model:
+        x = fx * X / Z + cx
+        y = fy * Y / Z + cy
+
+    Points behind the camera (Z <= 0) or outside the image bounds are skipped.
+    The result is displayed with cv2.imshow and also saved to 'projected_image.png'.
+
+    NOTE: lines_right is accepted as a parameter but currently unused.
+    NOTE: The camera intrinsics are hardcoded — replace fx, fy, cx, cy with your
+          actual calibrated values before use.
+
+    Args:
+        image (np.ndarray): BGR image of shape (H, W, 3) to draw onto (modified in-place).
+        lines_left (o3d.geometry.PointCloud): 3D point cloud of the left boundary line.
+        lines_right (o3d.geometry.PointCloud): 3D point cloud of the right boundary line (unused).
+    """
     # Load the point cloud
     print(image)
 

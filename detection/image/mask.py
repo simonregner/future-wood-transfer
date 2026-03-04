@@ -4,7 +4,7 @@ sys.path.append("..")
 import cv2
 import numpy as np
 
-import detection.tools.skeleton as sk
+import detection.image.skeleton as sk
 
 from scipy.ndimage import label, find_objects
 

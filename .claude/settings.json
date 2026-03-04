@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git mv ros_bridge ros/bridge)",
+      "Bash(git mv road_line_merging ros/road_lines)",
+      "Bash(git mv ROS ros/docker)",
+      "Bash(git mv rviz ros/rviz)",
+      "Bash(git mv Viewer tools/viewer)",
+      "Bash(git mv intersection tools/intersection)",
+      "Bash(git mv yolo_ml_backend tools/ml_backend)"
+    ],
+    "additionalDirectories": [
+      "/home/regner/Documents/Projects/FutureWoodTrans/future-wood-transfer/data"
+    ]
+  }
+}

@@ -1,6 +1,25 @@
 import open3d as o3d
 
 def create_pointcloud(depth_image, intrinsic_matrix):
+    """
+    Convert a depth image into an Open3D 3D point cloud using the pinhole camera model.
+
+    Each pixel (u, v) with a valid depth value d is back-projected to a 3D point:
+        X = (u - cx) * d / fx
+        Y = (v - cy) * d / fy
+        Z = d
+
+    Args:
+        depth_image (np.ndarray): Float32 depth image in meters, shape (H, W).
+                                  NaN and zero values are treated as invalid and skipped.
+        intrinsic_matrix (np.ndarray): 3x3 camera intrinsic matrix:
+                                       [[fx,  0, cx],
+                                        [ 0, fy, cy],
+                                        [ 0,  0,  1]]
+
+    Returns:
+        o3d.geometry.PointCloud: 3D point cloud of all valid depth pixels.
+    """
     # Convert the filtered depth image to an Open3D Image
     depth_o3d = o3d.geometry.Image(depth_image)
 

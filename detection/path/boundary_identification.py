@@ -1,7 +1,7 @@
 import sys
 sys.path.append("..")
 
-from detection.tools.line_intersection import intersection_of_boundaries
+from detection.road.line_intersection import intersection_of_boundaries
 
 import numpy as np
 from itertools import combinations
@@ -46,7 +46,7 @@ def find_left_to_right_pairs(boundaries, masks, road_masks, road_width=2.0, logg
                 or j in used
                 or distance < 1
                 or distance > 5
-                #or is_overlap_below_threshold(masks[i], masks[j], threshold=0.001)
+                #or masks_have_overlap(masks[i], masks[j], threshold=0.001)
                 or intersection_of_boundaries(boundaries[i], boundaries[j])
         ):
             if logger:
@@ -175,7 +175,7 @@ def distance_between_centers(points_a, points_b):
     center_b = np.mean(points_b, axis=0)
     return np.linalg.norm(center_a - center_b)
 
-def is_overlap_below_threshold(mask1, mask2, threshold=0.4):
+def masks_have_overlap(mask1, mask2, threshold=0.4):
     """
     Checks if the overlap between two masks exceeds a threshold.
 

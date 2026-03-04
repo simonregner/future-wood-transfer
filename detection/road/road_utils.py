@@ -1,7 +1,7 @@
 import sys
 sys.path.append("..")
 
-import detection.utils.pointcloud_utils as pointcloud_utils
+import detection.pointcloud.pointcloud_utils as pointcloud_utils
 
 import rclpy
 from rclpy.logging import get_logger

@@ -1,7 +1,7 @@
 import sys
 sys.path.append("..")
 
-from detection.tools.line_intersection import intersection_of_boundaries
+from detection.road.line_intersection import intersection_of_boundaries
 
 import numpy as np
 from itertools import combinations
@@ -63,7 +63,7 @@ def distance_between_centers(points_a, points_b):
     return np.linalg.norm(center_a - center_b)
 
 
-def is_overlap_below_threshold(mask1, mask2, threshold=0.4):
+def masks_have_overlap(mask1, mask2, threshold=0.4):
     """
     Check if mask1 overlaps mask2 by no more than the given threshold.
 
@@ -132,7 +132,7 @@ def find_left_to_right_pairs(boundaries, masks, road_width=2.0):
         if score <= 0.5:
             #rospy.logwarn(f"Score under 0.5: {score}")
             continue
-        if is_overlap_below_threshold(masks[i], masks[j], threshold=0.001):
+        if masks_have_overlap(masks[i], masks[j], threshold=0.001):
             #rospy.logwarn(f"Overlapping")
             continue
         if i in used or j in used or distance < 1:

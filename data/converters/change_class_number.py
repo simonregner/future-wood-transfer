@@ -1,9 +1,9 @@
 import os
 
 # -------- CONFIGURATION --------
-base_folder = "/home/simon/Documents/Master-Thesis/data/yolo_training_data/"
-numbers_to_change = ["7"]# ["2", "3", "5", "6"]
-special_number = "4"
+base_folder = "/home/regner/Documents/Projects/FutureWoodTrans/data/lane_training_yolo"
+numbers_to_change = "7", #["2", "3", "5", "6"]
+special_number = "1"
 
 classes_to_remove = []  # <- example: these class lines will be removed completely
 # -------------------------------

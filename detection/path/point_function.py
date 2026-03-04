@@ -9,6 +9,21 @@ from sklearn.decomposition import PCA
 from scipy.interpolate import CubicSpline
 
 def fit_line_3d(points, degree=4):
+    """
+    Fit a polynomial curve to a set of 3D points using least-squares curve fitting.
+
+    A uniform parameter t in [0, 1] is used as the independent variable. Separate
+    polynomial coefficients are fitted for x, y, and z simultaneously by stacking
+    them into a single scipy curve_fit call. The result is sampled at 100 evenly
+    spaced t values.
+
+    Args:
+        points (np.ndarray): Array of shape (N, 3) with the 3D input points.
+        degree (int): Polynomial degree for the fit. Default is 4.
+
+    Returns:
+        x_fine, y_fine, z_fine (np.ndarray): Each of shape (100,), the fitted curve coordinates.
+    """
     # Extract x, y, and z coordinates from points
     x = points[:, 0]
     y = points[:, 1]
@@ -68,10 +83,38 @@ def fit_line_3d_smooth(points, smoothing_factor=0):
 
 
 def func(xy, a, b, c, d, e, f):
+    """
+    Evaluate a 2nd-degree bivariate polynomial (quadratic surface) at points (x, y).
+
+    The surface is defined as:
+        z = a + b*x + c*y + d*x² + e*y² + f*x*y
+
+    Args:
+        xy (tuple): Pair of arrays (x, y) at which to evaluate the polynomial.
+        a–f (float): Polynomial coefficients (constant, linear x, linear y,
+                     quadratic x, quadratic y, cross term).
+
+    Returns:
+        np.ndarray: Evaluated z values for each (x, y) pair.
+    """
     x, y = xy
     return a + b * x + c * y + d * x**2 + e * y**2 + f * x * y
 
 def fit_line_3d_smooth_new(points):
+    """
+    Fit a smooth 3D spline to a set of 3D points and return densely sampled curve points.
+
+    Uses scipy's splprep to fit a parametric B-spline with a fixed smoothing factor of 20,
+    then evaluates it at 1000 evenly spaced parameter values for a high-resolution output.
+    Unlike fit_line_3d_smooth, this returns the result as a single (1000, 3) array rather
+    than three separate coordinate arrays.
+
+    Args:
+        points (np.ndarray): Array of shape (N, 3) with the 3D input points.
+
+    Returns:
+        points_smooth (np.ndarray): Array of shape (1000, 3) with the smoothed curve points.
+    """
     # Extract X, Y, Z coordinates
     x = points[:, 0]
     y = points[:, 1]
