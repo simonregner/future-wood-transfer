@@ -1,0 +1,33 @@
+# ─── Rosbag ──────────────────────────────────────────────────────────────────
+rosbag_path: /home/regner/Downloads/bagfile_aag/rosbag2_2025_07_01-14_42_01/rosbag2_2025_07_01-14_42_01_0.db3   # path to a ROS2 bag (directory or .mcap)
+frame_index: 200                   # 0-based index of the synchronized frame to use
+
+# ─── Topics ──────────────────────────────────────────────────────────────────
+topic_rgb:         /hazard_front/stereo_node_front/rgb
+topic_depth:       /hazard_front/stereo_node_front/depth
+topic_camera_info: /hazard_front/stereo_node_front/rgb/camera_info
+rgb_image_type: Image             # Image | CompressedImage
+
+# ─── Model ───────────────────────────────────────────────────────────────────
+model_type: yolo                  # yolo | mask2former
+model_path: best.pt   # optional; defaults to ../detection/models/<type>/
+
+# ─── Depth ───────────────────────────────────────────────────────────────────
+max_depth: 30.0                   # clip depth beyond this distance (meters)
+pointcloud_downsample_factor: 8   # keep every N-th point (1 = full density, higher = sparser)
+
+# ─── Segmentation coloring ───────────────────────────────────────────────────
+# When true the model is run and road / road-boundary pixels are re-colored in
+# the pointcloud.  The viewer starts with RGB colors and transitions to the
+# segmentation palette after viewer_switch_seconds.
+use_segmentation_colors: true
+seg_confidence: 0.50              # YOLO confidence threshold (lower = more detections)
+seg_road_class_id: 0              # class ID the model uses for road/path
+seg_boundary_class_id: 7          # class ID the model uses for road boundary
+seg_road_color:     [0.10, 0.85, 0.10]   # RGB [0..1] – green for road
+seg_boundary_color: [1.00, 0.15, 0.00]   # RGB [0..1] – red   for road boundary
+
+# ─── Viewer ──────────────────────────────────────────────────────────────────
+viewer_switch_seconds: 5.0        # seconds before the color transition
+viewer_rotation_speed: 0.5        # rotation speed in degrees per frame
+viewer_elevation_degrees: 30.0    # camera elevation angle (0° = side view, 90° = top-down)

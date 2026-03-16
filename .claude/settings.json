@@ -10,7 +10,8 @@
       "Bash(git mv yolo_ml_backend tools/ml_backend)"
     ],
     "additionalDirectories": [
-      "/home/regner/Documents/Projects/FutureWoodTrans/future-wood-transfer/data"
+      "/home/regner/Documents/Projects/FutureWoodTrans/future-wood-transfer/data",
+      "/home/regner/Documents/Projects/FutureWoodTrans/future-wood-transfer"
     ]
   }
 }

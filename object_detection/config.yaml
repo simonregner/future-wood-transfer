@@ -1,0 +1,33 @@
+# Object Detection Configuration
+model_path: models/yolo/yolo26s-seg.pt  # Path to YOLO weights file
+
+# Detection settings
+confidence: 0.5       # Minimum confidence threshold
+max_depth: 20.0       # Maximum depth in metres for 3-D position estimation
+imgsz: 640            # YOLO inference image size (smaller = faster, e.g. 320 or 480)
+half: false           # FP16 inference — requires GPU, roughly 2x faster
+
+# Classes to detect (COCO IDs). Comment out to detect all classes.
+# 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck
+target_classes: [0, 1, 2, 3, 5, 7]
+
+# Publish segmentation mask overlay (topic: /object_detection/mask_image)
+publish_mask: False
+# Publish 3-D markers for RViz visualisation (topic: /object_detection/markers)
+publish_markers: True
+
+# ROS Topic Configuration
+# topic_rgb: /hazard_front/stereo_node_front/rgb
+# topic_depth: /hazard_front/stereo_node_front/depth
+# topic_camera_info: /hazard_front/stereo_node_front/rgb/camera_info
+
+topic_rgb: /front_zed/zed_node/rgb/image_rect_color
+topic_depth: /front_zed/zed_node/depth/depth_registered
+topic_camera_info: /front_zed/zed_node/rgb/camera_info
+
+rgb_image_type: Image  # Image or CompressedImage
+
+# Time Synchronization
+time_syncronizer: True   # True = exact, False = approximate
+sync_max_delay: 0.05     # seconds (ApproximateTimeSynchronizer only)
+time_sync_queue_size: 1

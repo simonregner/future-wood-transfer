@@ -1,0 +1,19 @@
+name: fwt_rosbag_viewer
+# ROS2 packages (rosbag2_py, rclpy, cv_bridge, sensor_msgs) are NOT installed
+# here — they come from the system ROS2 installation.
+# Before running, source ROS2 Jazzy:
+#   source /opt/ros/jazzy/setup.bash
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12          # matches ROS2 Jazzy system Python
+  - pip
+  - git
+  - cmake
+  - pip:
+      - ultralytics
+      - opencv-python==4.8.0.76
+      - open3d==0.19.0
+      - pyyaml
+      - "numpy<2"

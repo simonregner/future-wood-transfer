@@ -1,9 +1,9 @@
 import argparse
 import rclpy
 
-from detection.ros.listener import TimeSyncListener
-from detection.models.yolo.yolo import YOLOModelLoader
-from detection.models.mask2former.mask2former import Mask2FormerModelLoader
+from ros.listener import TimeSyncListener
+from models.yolo.yolo import YOLOModelLoader
+from models.mask2former.mask2former import Mask2FormerModelLoader
 
 import yaml
 

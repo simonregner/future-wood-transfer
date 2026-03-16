@@ -39,11 +39,12 @@ RUN apt-get remove -y python3-transforms3d || true \
 
 # 4️⃣ Projekt-Requirements
 COPY requirements.txt /tmp/requirements.txt
-RUN python3 -m pip install -r /tmp/requirements.txt
+RUN pip install --ignore-installed sympy \
+    && python3 -m pip install -r /tmp/requirements.txt
 
 # 5️⃣ Projektdateien kopieren
-COPY . /detection
-COPY ros/road_lines_msg /ros2_ws/src/road_lines_msg
+COPY . /object_detection
+COPY ros/object_detection_msg /ros2_ws/src/object_detection_msg
 
 # 6️⃣ ROS 2-Workspace bauen
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd /ros2_ws && colcon build"
@@ -52,7 +53,7 @@ RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd /ros2_ws && colcon bui
 COPY docker/ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh
 ENTRYPOINT ["/ros_entrypoint.sh"]
-WORKDIR /detection
+WORKDIR /object_detection
 
 # 8️⃣ Standardbefehl
 CMD ["/bin/bash"]

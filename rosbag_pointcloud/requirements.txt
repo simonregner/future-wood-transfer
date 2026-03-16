@@ -1,0 +1,14 @@
+# Core
+numpy
+opencv-python>=4.8
+open3d>=0.16
+pyyaml
+
+# ROS2 (provided by the ROS2 Humble environment)
+# rosbag2-py
+# rclpy
+# cv-bridge
+
+# Segmentation models (same as detection/)
+ultralytics          # for model_type: yolo
+# detectron2         # for model_type: mask2former  (install separately)
