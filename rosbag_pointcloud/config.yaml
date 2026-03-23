@@ -28,6 +28,6 @@ seg_road_color:     [0.10, 0.85, 0.10]   # RGB [0..1] – green for road
 seg_boundary_color: [1.00, 0.15, 0.00]   # RGB [0..1] – red   for road boundary
 
 # ─── Viewer ──────────────────────────────────────────────────────────────────
-viewer_switch_seconds: 5.0        # seconds before the color transition
+viewer_switch_seconds: 10.0        # seconds before the color transition
 viewer_rotation_speed: 0.5        # rotation speed in degrees per frame
 viewer_elevation_degrees: 30.0    # camera elevation angle (0° = side view, 90° = top-down)
